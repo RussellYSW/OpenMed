@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use TrustFed in your research, please cite it."
+title: "TrustFed: supply-chain integrity and a zero-trust security layer for open-source collaborative clinical AI"
+version: 0.1.0
+date-released: 2026-07-21
+license: Apache-2.0
+repository-code: "https://github.com/AnonymousUser08/Trusted-TEE-for-Data-Sharing"
+authors:
+  - family-names: "Wu"
+    given-names: "Yusen"
+    affiliation: "University of Miami, Miller School of Medicine, Department of Neurology"
+keywords:
+  - federated learning
+  - byzantine-robust aggregation
+  - trusted execution environment
+  - remote attestation
+  - Parkinson's disease
+  - clinical AI

@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trustfed"
+version = "0.1.0"
+description = "Supply-chain integrity and a zero-trust security layer for open-source clinical AI: attested admission and Byzantine-resilient aggregation for collaborative multi-site model training. Demonstrated on Parkinson's-disease prognosis."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "TrustFed contributors" }]
+keywords = [
+    "zero-trust",
+    "supply-chain-security",
+    "byzantine-robust",
+    "remote-attestation",
+    "trusted-execution",
+    "model-poisoning-defense",
+    "healthcare",
+    "parkinsons-disease",
+    "federated-learning",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Topic :: Security",
+]
+dependencies = ["numpy>=1.21"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.urls]
+Homepage = "https://github.com/AnonymousUser08/Trusted-TEE-for-Data-Sharing"
+Issues = "https://github.com/AnonymousUser08/Trusted-TEE-for-Data-Sharing/issues"
+
+[tool.setuptools.packages.find]
+include = ["trustfed*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

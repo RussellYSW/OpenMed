@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# DATA SAFETY: never commit patient / controlled-access data.
+# These patterns block the most common real-cohort file names by accident.
+# Keep this section first and do not loosen it.
+# ---------------------------------------------------------------------------
+*.csv
+*.xlsx
+*.xls
+*.tsv
+*.dcm
+*.nii
+*.nii.gz
+data/
+Data/
+raw/
+phi/
+PHI/
+*_DATA_*.csv
+*patient*
+*PPMI*
+*PDBP*
+*mrn*
+# Allow only explicitly-synthetic sample files if you add any:
+!examples/**/sample_*.csv
+
+# ---------------------------------------------------------------------------
+# NOT part of the open-source release: the NSF proposal (private).
+# ---------------------------------------------------------------------------
+proposal/
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# ---------------------------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.ipynb_checkpoints/

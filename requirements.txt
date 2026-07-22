@@ -1,0 +1,5 @@
+# Runtime dependency (that's it — the demo runs on numpy alone).
+numpy>=1.21
+
+# For development / running the tests:
+#   pip install -e ".[dev]"
