@@ -22,6 +22,10 @@ PHI/
 *mrn*
 # Allow only explicitly-synthetic sample files if you add any:
 !examples/**/sample_*.csv
+# trustfed/data/ is the synthetic-cohort *source package*, not a data directory.
+# The `data/` rule above would otherwise silently drop it from the release.
+!trustfed/data/
+!trustfed/data/*.py
 
 # ---------------------------------------------------------------------------
 # NOT part of the open-source release: the NSF proposal (private).
