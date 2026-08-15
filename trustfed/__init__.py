@@ -88,7 +88,7 @@ Two runnable demonstrations, both on synthetic data::
     python -m trustfed.benchmark                    # the full defense grid
 
 See ``docs/`` for the documentation site, or
-https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing.
+https://github.com/RussellYSW/OpenMed.
 """
 
 from __future__ import annotations

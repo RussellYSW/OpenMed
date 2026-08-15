@@ -3,7 +3,7 @@
 > **Scope:** this document covers the *learning plane* (federated training,
 > aggregation, attestation) only. The trust plane -- ledger, registry,
 > certification, quality analysis, incentives -- is documented on the
-> [architecture page](https://russellysw.github.io/Trusted-TEE-for-Data-Sharing/architecture.html).
+> [architecture page](https://russellysw.github.io/OpenMed/architecture.html).
 
 ## Overview
 

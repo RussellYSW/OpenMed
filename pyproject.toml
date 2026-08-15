@@ -35,8 +35,8 @@ dependencies = ["numpy>=1.21"]
 dev = ["pytest>=7.0"]
 
 [project.urls]
-Homepage = "https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing"
-Issues = "https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/issues"
+Homepage = "https://github.com/RussellYSW/OpenMed"
+Issues = "https://github.com/RussellYSW/OpenMed/issues"
 
 [tool.setuptools.packages.find]
 include = ["trustfed*"]

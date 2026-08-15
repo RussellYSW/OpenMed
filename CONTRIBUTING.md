@@ -8,8 +8,8 @@ model, or an evaluation of someone else's model, is a first-class contribution.
 ## Getting set up
 
 ```bash
-git clone https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing.git
-cd Trusted-TEE-for-Data-Sharing
+git clone https://github.com/RussellYSW/OpenMed.git
+cd OpenMed
 python -m pip install -e ".[dev]"
 python -m pytest -q
 python examples/parkinson_decline/run_demo.py

@@ -7,13 +7,13 @@ itself.**
 > **OpenMed** is the ecosystem; **`trustfed`** is the Python package that implements it.
 > The two names refer to the same project.
 
-[![CI](https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/actions/workflows/ci.yml/badge.svg)](https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/actions/workflows/ci.yml)
+[![CI](https://github.com/RussellYSW/OpenMed/actions/workflows/ci.yml/badge.svg)](https://github.com/RussellYSW/OpenMed/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-green.svg)](LICENSE)
 
-📖 **[Documentation](https://russellysw.github.io/Trusted-TEE-for-Data-Sharing/)** ·
-🚀 **[Quickstart](https://russellysw.github.io/Trusted-TEE-for-Data-Sharing/quickstart.html)** ·
-🏛 **[Governance](https://russellysw.github.io/Trusted-TEE-for-Data-Sharing/governance.html)** ·
+📖 **[Documentation](https://russellysw.github.io/OpenMed/)** ·
+🚀 **[Quickstart](https://russellysw.github.io/OpenMed/quickstart.html)** ·
+🏛 **[Governance](https://russellysw.github.io/OpenMed/governance.html)** ·
 🤝 **[Contributing](CONTRIBUTING.md)**
 
 ---
@@ -65,8 +65,8 @@ Python 3.9+. The only required runtime dependency is numpy. No data, credentials
 network access needed — every example generates synthetic cohorts in-process from a seed.
 
 ```bash
-git clone https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing.git
-cd Trusted-TEE-for-Data-Sharing
+git clone https://github.com/RussellYSW/OpenMed.git
+cd OpenMed
 pip install -e ".[dev]"
 python -m pytest -q
 ```
@@ -130,7 +130,7 @@ Supporting: [`attestation`](trustfed/attestation) (the admission gate),
 adversary), [`benchmark`](trustfed/benchmark) (the shared harness),
 [`data`](trustfed/data) (synthetic non-IID cohorts).
 
-Full detail on the [architecture page](https://russellysw.github.io/Trusted-TEE-for-Data-Sharing/architecture.html).
+Full detail on the [architecture page](https://russellysw.github.io/OpenMed/architecture.html).
 ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) covers the learning plane only.)
 
 ## Example
@@ -221,7 +221,7 @@ Where an outside contributor has the most leverage right now:
   and admission gate without switching.
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the
-[community page](https://russellysw.github.io/Trusted-TEE-for-Data-Sharing/community.html).
+[community page](https://russellysw.github.io/OpenMed/community.html).
 Report vulnerabilities privately per [SECURITY.md](SECURITY.md), not in a public issue.
 
 ## Citing

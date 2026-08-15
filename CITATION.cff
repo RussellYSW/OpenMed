@@ -4,8 +4,8 @@ title: "OpenMed (trustfed): a governed commons for clinical AI models -- atteste
 version: 0.1.0
 date-released: 2026-07-21
 license: Apache-2.0
-repository-code: "https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing"
-url: "https://russellysw.github.io/Trusted-TEE-for-Data-Sharing/"
+repository-code: "https://github.com/RussellYSW/OpenMed"
+url: "https://russellysw.github.io/OpenMed/"
 authors:
   - family-names: "Wu"
     given-names: "Yusen"
