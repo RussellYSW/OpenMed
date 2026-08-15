@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Community — OpenMed</title>
+<meta name="description" content="How to contribute to OpenMed: contribution paths for clinical groups, ML researchers, and security engineers; review commitments; and how to reach the maintainers.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231c5d99'/><path d='M9 20.5 16 8l7 12.5H9Z' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="index.html">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="7" fill="#1c5d99"/>
+        <path d="M9 20.5 16 8l7 12.5H9Z" fill="none" stroke="white" stroke-width="2.4" stroke-linejoin="round"/>
+      </svg>
+      OpenMed
+    </a>
+    <nav class="nav">
+      <a href="index.html">Overview</a>
+      <a href="quickstart.html">Quickstart</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="governance.html">Governance</a>
+      <a href="community.html" class="active">Community</a>
+      <a class="gh" href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="layout">
+
+  <aside class="sidebar">
+    <h4>Community</h4>
+    <ul>
+      <li><a href="#paths">Ways to contribute</a></li>
+      <li><a href="#first">Your first contribution</a></li>
+      <li><a href="#commitments">What we commit to</a></li>
+      <li><a href="#credit">How credit works</a></li>
+      <li><a href="#help">Where we need help</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+    <h4>Documentation</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="quickstart.html">Quickstart</a></li>
+      <li><a href="architecture.html">Architecture</a></li>
+      <li><a href="governance.html">Governance</a></li>
+    </ul>
+  </aside>
+
+  <main>
+    <h1>Community</h1>
+    <p class="lede">
+      The barrier to contributing here is deliberately low. You do not have to write
+      framework code to participate — returning a model, or an evaluation of someone
+      else's model, is a first-class contribution.
+    </p>
+
+    <h2 id="paths">Ways to contribute</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Clinical and neuroscience groups</h3>
+        <p>Submit a model you have already trained. You get an independent multi-site evaluation you could not produce alone; the commons gets a model with provenance attached.</p>
+      </div>
+      <div class="card">
+        <h3>ML and robustness researchers</h3>
+        <p>New attacks and defenses land as pull requests against the benchmark harness, so they are compared on common ground instead of living in a one-off paper repository.</p>
+      </div>
+      <div class="card">
+        <h3>Confidential-computing engineers</h3>
+        <p>The attestor is an interface. Real TEE backends — SGX/TDX, SEV-SNP — plug in behind it without touching the rest of the system.</p>
+      </div>
+      <div class="card">
+        <h3>Clinicians and reviewers</h3>
+        <p>Review submissions for clinical correctness, and help hold the fine-tuning manuals to a standard a treating physician can actually act on.</p>
+      </div>
+      <div class="card">
+        <h3>Security and compliance officers</h3>
+        <p>Tell us where the provenance and audit artifacts fall short of what your institution would need before it could say yes. That feedback shapes the threat model.</p>
+      </div>
+      <div class="card">
+        <h3>Documentation and onboarding</h3>
+        <p>If something in the quickstart did not work on your machine, that is a bug worth filing. Onboarding friction is treated as a defect, not a fact of life.</p>
+      </div>
+    </div>
+
+    <h2 id="first">Your first contribution</h2>
+    <ol class="steps">
+      <li>
+        <strong>Get it running.</strong> Follow the <a href="quickstart.html">quickstart</a>.
+        It should take a few minutes and requires nothing but Python and numpy. If it does
+        not work, that is the first issue worth filing.
+      </li>
+      <li>
+        <strong>Read <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.</strong>
+        It covers the development setup, the ground rules on data and dependencies,
+        and the test expectations.
+      </li>
+      <li>
+        <strong>Pick something small.</strong> Issues labelled
+        <code>good first issue</code> are scoped so that a first-time contributor can finish
+        them in one sitting, and each says what "done" looks like. If none are open yet,
+        say so in an issue and one will be scoped for you.
+      </li>
+      <li>
+        <strong>Open the pull request early.</strong> A draft PR with a question in it is
+        more useful than a perfect PR three weeks later. We would rather redirect you at the
+        start than at the end.
+      </li>
+    </ol>
+
+    <h2 id="commitments">Service levels we are committing to <span class="status">target</span></h2>
+    <div class="note warn">
+      <p>
+        <strong>These are targets, not a description of current operations.</strong> The
+        project does not yet have a standing review board or a submission queue, so nothing
+        below has an operating history behind it. They are published in advance so that the
+        commitments exist before the volume does — and so you can hold us to them once it
+        arrives.
+      </p>
+    </div>
+    <table>
+      <thead>
+        <tr><th>You do this</th><th>We respond</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Open an issue or a model submission</td><td>Triaged within two business days</td></tr>
+        <tr><td>Submit a model for review</td><td>Automated quality gate reports within one week</td></tr>
+        <tr><td>Open a pull request</td><td>First review within one week; two approvals to merge</td></tr>
+        <tr><td>Report a vulnerability privately</td><td>Acknowledged ahead of feature work, per <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/SECURITY.md">SECURITY.md</a></td></tr>
+      </tbody>
+    </table>
+    <div class="note">
+      <p>
+        If submission volume outgrows these, the honest response is to add reviewer capacity
+        — not to quietly let the targets slip. The intent is that misses get recorded rather
+        than absorbed.
+      </p>
+    </div>
+
+    <h2 id="credit">How credit works</h2>
+    <p>
+      Most contributors here are clinicians and academics, and the incentives are built to
+      pay in the currency those careers actually count:
+    </p>
+    <ul>
+      <li><strong>Citation.</strong> Every accepted model gets a citable identifier and release attribution. Identifiers are currently minted locally and are not registered with an external resolver.</li>
+      <li><strong>Evidence.</strong> A multi-site evaluation report is external validation — a result a single lab or hospital cannot produce alone, and one that strengthens your own papers and applications.</li>
+      <li><strong>Visibility.</strong> Reviewed models will appear on the public benchmark under the contributor's name. <span class="status">target</span> The benchmark harness ships and runs locally; the public instance does not exist yet.</li>
+      <li><strong>Voice.</strong> Contributor standing maps to governance weight, on the ladder described in <a href="governance.html#roles">governance</a>.</li>
+      <li><strong>Reciprocity.</strong> Evaluation labor is reciprocal by rule: to receive a multi-site evaluation, a site serves as an evaluator for others. This is enforced in code, not by good manners.</li>
+    </ul>
+
+    <h2 id="help">Where we most need help right now</h2>
+    <p>
+      Being specific about this is more useful than a general invitation. The areas where an
+      outside contributor would have the most leverage today:
+    </p>
+    <ul>
+      <li><strong>A real TEE attestation backend.</strong> The shipped attestor is a software mock. An SGX/TDX or SEV-SNP implementation behind the existing interface is the single highest-value contribution to the trust plane.</li>
+      <li><strong>Adaptive attacks.</strong> The benchmark harness is only as honest as the strongest attack in it. Attacks that specifically target the aggregator in use are more valuable than another defense.</li>
+      <li><strong>Fine-tuning manual review.</strong> Clinicians who will tell us where the schema fails to capture what a treating physician needs to know before trusting a model.</li>
+      <li><strong>Integration adapters.</strong> Making OpenMed's robust aggregator and admission gate usable from existing federated frameworks, rather than asking anyone to switch.</li>
+    </ul>
+
+    <h2 id="contact">Contact</h2>
+    <ul>
+      <li><strong>Bugs, features, questions:</strong> <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/issues">GitHub issues</a> — public by default, so the answer helps the next person too.</li>
+      <li><strong>Vulnerabilities:</strong> privately, per <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/SECURITY.md">SECURITY.md</a>. Please do not open a public issue.</li>
+      <li><strong>Conduct concerns:</strong> per <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/CODE_OF_CONDUCT.md">CODE_OF_CONDUCT.md</a>.</li>
+    </ul>
+
+  </main>
+</div>
+</div>
+
+<footer class="site-footer">
+  <div class="inner">
+    <div>OpenMed — Apache-2.0. No patient data is distributed with this project.</div>
+    <div>
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing">GitHub</a> ·
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/SECURITY.md">Security</a> ·
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/CODE_OF_CONDUCT.md">Code of conduct</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

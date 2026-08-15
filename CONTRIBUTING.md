@@ -1,13 +1,15 @@
-# Contributing to TrustFed
+# Contributing to OpenMed
 
-Thanks for your interest! TrustFed is an early-stage, community-oriented project
-and contributions of all sizes are welcome.
+Thanks for your interest! **OpenMed** is the ecosystem; **`trustfed`** is the Python
+package that implements it -- the two names refer to the same project. Contributions
+of all sizes are welcome, and they do not have to be framework code: returning a
+model, or an evaluation of someone else's model, is a first-class contribution.
 
 ## Getting set up
 
 ```bash
-git clone https://github.com/AnonymousUser08/Trusted-TEE-for-Data-Sharing.git
-cd trustfed
+git clone https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing.git
+cd Trusted-TEE-for-Data-Sharing
 python -m pip install -e ".[dev]"
 python -m pytest -q
 python examples/parkinson_decline/run_demo.py
@@ -27,7 +29,8 @@ python examples/parkinson_decline/run_demo.py
 
 ## Good first contributions
 
-- A new robust aggregator (e.g. Bulyan, centered clipping) + tests.
+- A new robust aggregator (e.g. Bulyan) + tests, wired into `AGGREGATORS`
+  and the benchmark grid.
 - A Flower or NVIDIA FLARE adapter that reuses `trustfed.aggregation`.
 - A real TEE `Attestor` backend (SGX/TDX/SEV-SNP).
 - Improvements to the synthetic data generator (more realistic heterogeneity).

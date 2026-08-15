@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Governance — OpenMed</title>
+<meta name="description" content="How OpenMed is governed: who decides what gets accepted, how disputes are resolved, licensing, security response, and the path to a neutral home.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231c5d99'/><path d='M9 20.5 16 8l7 12.5H9Z' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="index.html">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="7" fill="#1c5d99"/>
+        <path d="M9 20.5 16 8l7 12.5H9Z" fill="none" stroke="white" stroke-width="2.4" stroke-linejoin="round"/>
+      </svg>
+      OpenMed
+    </a>
+    <nav class="nav">
+      <a href="index.html">Overview</a>
+      <a href="quickstart.html">Quickstart</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="governance.html" class="active">Governance</a>
+      <a href="community.html">Community</a>
+      <a class="gh" href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="layout">
+
+  <aside class="sidebar">
+    <h4>Governance</h4>
+    <ul>
+      <li><a href="#status">Status</a></li>
+      <li><a href="#participation">Participation</a></li>
+      <li><a href="#review">Review and promotion</a></li>
+      <li><a href="#disputes">Disputes</a></li>
+      <li><a href="#roles">Roles and advancement</a></li>
+      <li><a href="#neutrality">Neutrality and ownership</a></li>
+      <li><a href="#licensing">Licensing</a></li>
+      <li><a href="#security">Vulnerability response</a></li>
+      <li><a href="#sustainability">Sustainability</a></li>
+    </ul>
+    <h4>Documentation</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="quickstart.html">Quickstart</a></li>
+      <li><a href="architecture.html">Architecture</a></li>
+      <li><a href="community.html">Community</a></li>
+    </ul>
+  </aside>
+
+  <main>
+    <h1>Governance</h1>
+    <p class="lede">
+      A model commons only works if the rules are written down before they are needed.
+      This page states who decides what, on what criteria, and what recourse a contributor
+      has when a decision goes against them.
+    </p>
+
+    <h2 id="status">Status of this document</h2>
+    <div class="note">
+      <p>
+        <strong>This is a working draft, not a ratified charter.</strong> It describes the
+        governance model the project is building toward and the rules currently enforced in
+        code (see <a href="architecture.html#certification">certification</a>). Sections
+        marked <span class="status">proposed</span> are not yet in effect and are open for
+        comment — <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/issues">open an issue</a>
+        if you disagree with one. Sections marked <span class="status built">enforced</span>
+        are implemented and tested in this repository.
+      </p>
+    </div>
+
+    <h2 id="participation">Participation</h2>
+    <p>
+      Any registered institution or developer may submit a model or a code contribution.
+      There is no membership fee and no invitation requirement.
+    </p>
+    <p>
+      Acceptance of a model is decided by a model-review board: at least two technical
+      reviewers and one clinical reviewer, plus the automated quality gate, judged against
+      published blocking criteria. <span class="status">proposed</span> What ships enforces
+      k-of-n across distinct institutions; <em>reviewer-role composition is not enforced in
+      code</em> — <code>Reviewer.role</code> is a free string the policy never consults, and
+      no blocking criteria are published yet. Acceptance of a code contribution follows the ordinary
+      pull-request path described in
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.
+    </p>
+
+    <h2 id="review">Review and promotion <span class="status built">partly enforced</span></h2>
+    <p>
+      A submitted model does not become part of the shared base by being good. It becomes
+      part of the shared base by being <em>certified</em>. Certification has structural
+      requirements in code — with the limits stated precisely, because a control you
+      misunderstand is worse than one you know you lack.
+    </p>
+
+    <h3>No self-certification</h3>
+    <p>
+      <strong>Enforced when a case is opened with the model bundle itself.</strong>
+      <code>CertificationAuthority.submit(bundle)</code> derives the owner institution from
+      <code>ModelBundle.published_by</code>, which sits inside the content hash the bundle
+      ID commits to, so a reviewer from that institution is refused. A case opened with only
+      a bundle ID plus a <em>declared</em> owner is marked <code>self_asserted: true</code>
+      on the decision log — and that weaker form can still be defeated by declaring a false
+      owner.
+    </p>
+
+    <h3>k-of-n threshold across distinct institutions</h3>
+    <p>
+      A threshold over signatures, each bound to a registered reviewer key and to that key's
+      registered institution: a signature cannot claim an institution its key is not bound
+      to. Whether this is a <em>cryptographic</em> control depends on which API you use.
+    </p>
+    <ul>
+      <li><code>submit_signature()</code> verifies a detached signature the authority did not produce, and <code>ReviewerKeyring.verify_only()</code> gives the authority no private keys at all. This is the real control.</li>
+      <li><code>review()</code> is a demo and test convenience: it signs on the reviewer's behalf with a key the authority holds. Its docstring says so.</li>
+    </ul>
+    <div class="note warn">
+      <p>
+        The keyring is local and unauthenticated. It models the <em>policy</em> layer — who
+        may sign for whom, and what combinations satisfy a quorum — not a PKI. Binding
+        reviewer identities to real institutional credentials is out of scope for what ships
+        here.
+      </p>
+    </div>
+
+    <h3>Append-only decision log</h3>
+    <p>
+      Certification decisions are written to the ledger. A certification cannot be silently
+      edited after the fact; a revocation is a new entry and the original stays visible.
+      Signed dispute actions are available behind <code>require_signed_actions=True</code>,
+      which is <strong>off by default</strong> — unsigned actions are recorded with
+      <code>actor_authenticated: false</code> rather than rejected, so the log tells you how
+      much each entry is worth.
+    </p>
+
+    <p>
+      Promotion into the next base version additionally requires that the model be
+      merge-eligible under its model-family contract, above the published evaluation
+      thresholds, and board-approved. <span class="status">proposed</span>
+    </p>
+
+    <h2 id="disputes">Disputes, decided by rule <span class="status">proposed</span></h2>
+    <p>
+      The point of writing this down in advance is that the hard cases are decided by a
+      rule rather than by whoever is loudest. A concrete case:
+    </p>
+    <p>
+      Institution A submits a strong model. Institution B finds it underperforms for Black
+      patients. Institution C suspects privacy leakage. The charter already answers:
+    </p>
+    <ul>
+      <li><strong>Who reviews:</strong> the bias auditor and the privacy screen.</li>
+      <li><strong>What blocks release:</strong> unresolved subgroup harm, or demonstrated leakage.</li>
+      <li><strong>What A may do:</strong> remediate and resubmit; a blocked submission is not a permanent rejection.</li>
+      <li><strong>What is recorded:</strong> every decision and its rationale, logged publicly.</li>
+    </ul>
+    <p>
+      Contributors may appeal any decision to the advisory board. A code of conduct governs
+      behavior and is enforced through the same path.
+    </p>
+
+    <h2 id="roles">Roles and advancement</h2>
+    <table>
+      <thead>
+        <tr><th>Role</th><th>May</th><th>Becomes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Consumer</td>
+          <td>Download and fine-tune certified models; verify lineage</td>
+          <td>Contributor, by having a model or code contribution accepted</td>
+        </tr>
+        <tr>
+          <td>Contributor</td>
+          <td>Submit models and code; vote on matters open to contributors</td>
+          <td>Trusted reviewer, by published criteria on review quality and volume</td>
+        </tr>
+        <tr>
+          <td>Trusted reviewer</td>
+          <td>Sign certifications on behalf of their institution</td>
+          <td>Maintainer, by nomination and board approval</td>
+        </tr>
+        <tr>
+          <td>Maintainer</td>
+          <td>Merge code, cut releases, act on security reports</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      A documented succession plan is required to survive any individual's departure,
+      <em>including the founding maintainer's</em>. A project whose bus factor is one is not
+      a commons.
+    </p>
+
+    <h2 id="neutrality">Neutrality and ownership <span class="status">proposed</span></h2>
+    <p>
+      No single university permanently controls the ecosystem. Code, models, and the project
+      name are to be held by a neutral post-award home, and anti-capture rules bar any single
+      institution or company from holding a board majority.
+    </p>
+    <p>
+      Industry participants may advise and may donate compute. Donated compute must be
+      non-exclusive, and an industry advisor holds no governance vote.
+    </p>
+
+    <h2 id="licensing">Licensing</h2>
+    <ul>
+      <li><strong>Code:</strong> Apache-2.0. Contributors agree their contribution is licensed under Apache-2.0; a formal Developer Certificate of Origin sign-off is <span class="status">proposed</span>, not yet required.</li>
+      <li><strong>Models:</strong> <span class="status">proposed</span> a reciprocal, OpenRAIL-style license, backed by a service-reciprocity rule — downloads require lightweight registration, so review services and the next base version are genuinely withholdable from a party that takes without contributing.</li>
+    </ul>
+    <p>
+      Whether silent internal deployment (a site using certified models indefinitely without
+      contributing back) should be permitted is an open scoping question, deliberately not
+      yet answered.
+    </p>
+
+    <h2 id="security">Vulnerability response</h2>
+    <p>
+      Report vulnerabilities privately by opening a GitHub security advisory, as described
+      in <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/SECURITY.md">SECURITY.md</a>
+      — not in a public issue. SECURITY.md states the current commitment: reports are
+      acknowledged within a few business days. A standing response team with published
+      remediation timelines is <span class="status">proposed</span>, not yet in place.
+    </p>
+    <p>
+      Because a compromised model in this ecosystem is a patient-safety problem and not only
+      an accuracy problem, security reports take precedence over feature work.
+    </p>
+
+    <h2 id="sustainability">Sustainability <span class="status">proposed</span></h2>
+    <p>
+      The ecosystem is intended to outlive any single grant, as a community-governed commons
+      under a neutral home. The operating cost model covers hosting, per-review compute,
+      evaluator labor, and staffing, against funding hypotheses to be tested rather than
+      assumed:
+    </p>
+    <ul>
+      <li>Automated review stays free.</li>
+      <li>Deep clinical review is supported by institutional membership.</li>
+      <li>Consortium sponsorship covers shared infrastructure.</li>
+      <li>Evaluation nodes are contributed in kind, under the reciprocity rule.</li>
+    </ul>
+
+    <hr>
+    <p>
+      Disagree with something here? That is the point of publishing it in draft.
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/issues">Open an issue</a>
+      and argue the case in public.
+    </p>
+
+  </main>
+</div>
+</div>
+
+<footer class="site-footer">
+  <div class="inner">
+    <div>OpenMed — Apache-2.0. No patient data is distributed with this project.</div>
+    <div>
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing">GitHub</a> ·
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/SECURITY.md">Security</a> ·
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/CODE_OF_CONDUCT.md">Code of conduct</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

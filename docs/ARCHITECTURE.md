@@ -1,5 +1,10 @@
 # Architecture & threat model
 
+> **Scope:** this document covers the *learning plane* (federated training,
+> aggregation, attestation) only. The trust plane -- ledger, registry,
+> certification, quality analysis, incentives -- is documented on the
+> [architecture page](https://russellysw.github.io/Trusted-TEE-for-Data-Sharing/architecture.html).
+
 ## Overview
 
 TrustFed adds a *zero-trust security layer* around the admission and aggregation

@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture — OpenMed</title>
+<meta name="description" content="How OpenMed's six components fit together: the learning plane, the trust plane, and the interfaces between them.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231c5d99'/><path d='M9 20.5 16 8l7 12.5H9Z' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="index.html">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="7" fill="#1c5d99"/>
+        <path d="M9 20.5 16 8l7 12.5H9Z" fill="none" stroke="white" stroke-width="2.4" stroke-linejoin="round"/>
+      </svg>
+      OpenMed
+    </a>
+    <nav class="nav">
+      <a href="index.html">Overview</a>
+      <a href="quickstart.html">Quickstart</a>
+      <a href="architecture.html" class="active">Architecture</a>
+      <a href="governance.html">Governance</a>
+      <a href="community.html">Community</a>
+      <a class="gh" href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="layout">
+
+  <aside class="sidebar">
+    <h4>Architecture</h4>
+    <ul>
+      <li><a href="#planes">Two planes</a></li>
+      <li><a href="#flow">End-to-end flow</a></li>
+      <li><a href="#federated">Federated co-training</a></li>
+      <li><a href="#attestation">Attestation</a></li>
+      <li><a href="#ledger">Ledger</a></li>
+      <li><a href="#registry">Registry</a></li>
+      <li><a href="#certification">Certification</a></li>
+      <li><a href="#quality">Quality analysis</a></li>
+      <li><a href="#incentives">Incentives</a></li>
+      <li><a href="#benchmark">Benchmark harness</a></li>
+      <li><a href="#extending">Extension points</a></li>
+    </ul>
+    <h4>Documentation</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="quickstart.html">Quickstart</a></li>
+      <li><a href="governance.html">Governance</a></li>
+      <li><a href="community.html">Community</a></li>
+    </ul>
+  </aside>
+
+  <main>
+    <h1>Architecture</h1>
+    <p class="lede">
+      OpenMed separates into two planes. The <strong>learning plane</strong> produces models
+      from data that never leaves its institution. The <strong>trust plane</strong> decides
+      which models are admitted, records what happened, and makes that record checkable by
+      someone who trusts none of the participants.
+    </p>
+
+    <h2 id="planes">Two planes</h2>
+    <table>
+      <thead>
+        <tr><th>Plane</th><th>Packages</th><th>Answers</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Learning</strong></td>
+          <td><code>trustfed.data</code>, <code>trustfed.models</code>, <code>trustfed.federated</code>, <code>trustfed.aggregation</code>, <code>trustfed.attack</code>, <code>trustfed.benchmark</code></td>
+          <td>How do sites train one model together when a minority of them may be malicious?</td>
+        </tr>
+        <tr>
+          <td><strong>Trust</strong></td>
+          <td><code>trustfed.attestation</code>, <code>trustfed.ledger</code>, <code>trustfed.registry</code>, <code>trustfed.certification</code>, <code>trustfed.quality</code>, <code>trustfed.incentives</code></td>
+          <td>Which models are admitted, on whose authority, and how does an outsider verify that later?</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      The planes meet at two points only: the attestation gate that admits an update into
+      aggregation, and the model bundle that carries a trained model into the registry.
+      Everything else is independent, which is why a real TEE backend or a different
+      federated framework can be swapped in without touching the rest.
+    </p>
+
+    <h2 id="flow">End-to-end flow</h2>
+    <pre><code>site-local data  ──▶  Client.train()
+                          │  update + attestation quote
+                          ▼
+                   Attestor.check()   ──▶ rejected (unapproved code / replayed nonce*)
+                          │ accepted
+                          ▼
+             aggregation (krum / median / trimmed mean / clipping)
+                          │  new global model
+                          ▼
+                  ModelBundle  ──▶  ModelRegistry.publish()
+                          │              │  event written to ledger
+                          │              ▼
+                          │        LineageGraph (parent ◀── derived)
+                          ▼
+                  QualityAnalyzer.analyze()  ──▶  QualityReport (JSON + Markdown)
+                          │
+                          ▼
+       CertificationAuthority: k-of-n signatures across DISTINCT institutions
+                          │  decision appended (tamper-evident)
+                          ▼
+                  certified base model  ──▶  CreditLedger (citable id, attribution)
+                                                 │
+                                                 ▼
+                                          ReciprocityPolicy gates the next evaluation
+
+* replayed-nonce rejection requires a NonceStore and require_nonce=True; both off by default</code></pre>
+
+    <h2 id="federated">Federated co-training <span class="status built">built</span></h2>
+    <p>
+      <code>Server</code> runs rounds: broadcast the global model, collect
+      <code>Update</code>s, reject anything that fails attestation, aggregate the survivors
+      with a Byzantine-robust rule, evaluate on held-out data, and record a
+      <code>RoundResult</code>.
+    </p>
+    <p><strong>Aggregators</strong> in <code>trustfed.aggregation</code>, each with a documented tolerance bound:</p>
+    <table>
+      <thead><tr><th>Rule</th><th>Byzantine tolerance</th></tr></thead>
+      <tbody>
+        <tr><td><code>fedavg</code></td><td>None — a single large update dominates. Included as the baseline that shows why the others are needed.</td></tr>
+        <tr><td><code>coordinate_median</code></td><td>Fewer than half the clients</td></tr>
+        <tr><td><code>trimmed_mean</code></td><td>Up to the trimmed fraction on each side</td></tr>
+        <tr><td><code>krum</code> / <code>multi_krum</code></td><td>Requires <code>n &gt; 2f + 2</code></td></tr>
+        <tr><td><code>norm_clipped_mean</code>, <code>centered_clipping</code></td><td>Bounds each client's influence rather than excluding clients</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Call <code>tolerance_bound()</code> or <code>tolerance_table()</code> to get the bound
+      for a configuration rather than assuming it. <strong>Client selection</strong> is
+      pluggable: <code>RandomSelector</code>, <code>LossBasedSelector</code>, and
+      <code>ReputationSelector</code>, which consumes per-client history
+      (<code>ClientHistory</code>) accumulated across rounds.
+    </p>
+    <p>
+      <code>trustfed.attack</code> exists so defenses are tested against something real:
+      sign flipping, gaussian noise, scaling and model replacement, label flipping, feature
+      corruption, and <code>AdaptiveAdversary</code> — an attacker that targets the specific
+      aggregator in use. A defense that only survives the non-adaptive attacks has not been
+      tested.
+    </p>
+
+    <h2 id="attestation">Attestation <span class="status built">built</span></h2>
+    <p>
+      Before an update is aggregated, the client presents a <code>Quote</code> over its code
+      measurement. <code>AttestationPolicy</code> holds the set of approved measurements;
+      <code>NonceStore</code> enforces freshness so a captured quote cannot be replayed —
+      <strong>when the attestor is built with one and the policy sets
+      <code>require_nonce=True</code>. Both default to off</strong>, including in the
+      shipped parkinson demo, and without them a captured quote replays indefinitely.
+    </p>
+    <div class="note warn">
+      <p>
+        <strong><code>MockSoftwareAttestor</code> is not a security boundary.</strong> The
+        "measurement" is a hash of a declared identity string and the "quote" is an HMAC
+        under a shared key standing in for a hardware root of trust. It is sufficient to
+        exercise the protocol and to test accept/reject logic, and nothing more. Implement
+        the <code>Attestor</code> interface against SGX/TDX or SEV-SNP quoting APIs for a
+        real deployment — the rest of OpenMed is unchanged.
+      </p>
+    </div>
+
+    <h2 id="ledger">Tamper-evident ledger <span class="status built">built</span></h2>
+    <p>
+      An append-only hash chain. Each <code>Block</code> carries its index, the previous
+      block's hash, a canonical-JSON payload, the payload hash, and a signature.
+      <code>LedgerBackend.verify_chain()</code> returns a structured <code>ChainVerification</code> that
+      detects modification and reordering always. Truncation — the case naive
+      implementations miss — is detected only against an <em>anchor</em>:
+      <code>FileLedger</code>'s <code>.head.json</code> sidecar, or an external
+      <code>Checkpoint</code> passed as <code>expected=</code>. An unanchored verdict
+      reports <code>anchored=False</code> and cannot rule out a missing tail;
+      <code>InMemoryLedger</code> has no anchor.
+    </p>
+    <ul>
+      <li><code>InMemoryLedger</code> for tests and short-lived runs; <code>FileLedger</code> (JSONL) for durable logs.</li>
+      <li>Signing is <code>Ed25519Signer</code> when <code>cryptography</code> is importable, falling back to <code>HmacSigner</code>. <code>HAVE_CRYPTOGRAPHY</code> tells you which you got. The HMAC fallback provides integrity under a shared secret — it is not a signature and does not give non-repudiation.</li>
+      <li><code>LedgerBackend</code> is an ABC, so a permissioned-ledger backend can be added without changing callers.</li>
+    </ul>
+    <p>
+      The registry, certification authority, and credit ledger all write through this
+      interface, which is what makes their histories jointly checkable.
+    </p>
+
+    <h2 id="registry">Model registry <span class="status built">built</span></h2>
+    <p>
+      A <code>ModelBundle</code> is the unit of exchange: a <code>WeightsRef</code>, a
+      <code>ModelCard</code> (following the Mitchell et al. sections), a
+      <code>PipelineAttestation</code>, an <code>EvaluationReport</code>, and a
+      <code>FineTuningManual</code>. Bundle IDs are content-addressed, so the identifier
+      commits to the contents.
+    </p>
+    <p>
+      Publishing a model derived from another auto-links it to its parent. The registry
+      therefore accumulates a <code>LineageGraph</code> rather than a flat file list, and
+      <code>ModelRegistry.verify_lineage()</code> walks the chain to a root and returns a
+      <code>LineageVerdict</code> naming each <code>LineageIssue</code> it found — a missing
+      parent, an unverifiable attestation, a broken hash. One call answers "is this model's
+      whole ancestry attested?" (It is a method, <code>ModelRegistry.verify_lineage()</code>,
+      not a free function.)
+    </p>
+
+    <h2 id="certification">Multi-party certification <span class="status built">built</span></h2>
+    <p>
+      A model becomes a certified base only when reviewers from more than one institution
+      sign off. <code>ThresholdPolicy</code> enforces k-of-n over <em>distinct</em>
+      institutions, with the rules that make it meaningful:
+    </p>
+    <ul>
+      <li>A site's signature does not count toward its own submission's quorum — <code>ConflictOfInterestError</code>.</li>
+      <li>Reviewer keys are institution-bound via <code>ReviewerKeyring</code>; an unknown key is rejected rather than ignored.</li>
+      <li>Every decision is appended to the ledger. A revocation is a new entry; the original stays visible.</li>
+    </ul>
+    <p>
+      A <code>CertificationCase</code> moves through an explicit state machine —
+      <code>submitted → under_review → blocked | certified → revoked</code>, with
+      <code>remediated</code> as the path back from <code>blocked</code>. Illegal
+      transitions raise <code>InvalidTransitionError</code> rather than silently succeeding;
+      <code>transitions_table()</code> prints the whole machine.
+    </p>
+    <p>
+      <code>validate_manual()</code> holds the fine-tuning manual to a fixed schema —
+      intended use, data, preprocessing, hyperparameters, failure modes, clinical caveats —
+      so what a hospital receives is a clinically actionable model rather than a checkpoint.
+    </p>
+
+    <h2 id="quality">Automated quality analysis <span class="status built">built</span></h2>
+    <p>
+      <code>QualityAnalyzer</code> runs independent <code>Check</code>s over a bundle and
+      emits a <code>QualityReport</code> (JSON and Markdown). Shipped checks:
+    </p>
+    <table>
+      <thead><tr><th>Check</th><th>Catches</th></tr></thead>
+      <tbody>
+        <tr><td><code>ModelCardCompletenessCheck</code></td><td>Missing required model-card sections</td></tr>
+        <tr><td><code>MetadataSchemaCheck</code></td><td>Structurally invalid or malformed bundle metadata</td></tr>
+        <tr><td><code>MetricsPresentCheck</code></td><td>Absent, out-of-range, or implausible reported metrics</td></tr>
+        <tr><td><code>SubgroupGapCheck</code></td><td>Performance gaps across reported subgroups</td></tr>
+        <tr><td><code>MembershipInferenceCheck</code></td><td>Training-data leakage, via a global-threshold attack on confidence scores. <strong>Skips</strong> unless member/non-member scores are supplied; a pass means <em>this</em> attack failed, not that the model is private</td></tr>
+        <tr><td><code>ParameterNormCheck</code></td><td>Parameter-norm outliers relative to the family</td></tr>
+        <tr><td><code>LineageAttestationCheck</code></td><td>Missing or unverifiable provenance</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Summarisation goes through the <code>LLMSummarizer</code> protocol.
+      <code>TemplateSummarizer</code> is the default: deterministic, no model required, so
+      the gate runs anywhere. <code>LocalLLMSummarizer</code> is optional and uses a locally
+      hosted endpoint, so no submission leaves the reviewing site. The report carries a
+      <code>DISCLAIMER</code> stating that automated analysis supplements human review
+      rather than replacing it.
+    </p>
+
+    <h2 id="incentives">Credit and reciprocity <span class="status built">built</span></h2>
+    <p>
+      <code>CreditLedger</code> records <code>CreditEvent</code>s on top of the ledger:
+      accepted models, evaluations served, code contributions. It issues a
+      <code>CitableIdentifier</code> and <code>ReleaseAttribution</code> for accepted work,
+      and computes <code>ContributorStanding</code> — a <code>StandingTier</code> that maps
+      to governance weight.
+    </p>
+    <p>
+      <code>ReciprocityPolicy</code> is the rule with teeth: to receive a multi-site
+      evaluation, a site must have served as an evaluator. A request that does not qualify
+      returns a <code>ReciprocityDecision</code> carrying a machine-readable reason, not a
+      bare refusal — the requester is told exactly what would make it succeed.
+    </p>
+
+    <h2 id="benchmark">Benchmark harness <span class="status built">built</span></h2>
+    <p>
+      A <code>Scenario</code> declares sites, Byzantine count, attack, aggregator, rounds,
+      and seed. <code>Runner</code> executes a <code>grid()</code> of them and produces a
+      <code>BenchmarkReport</code> serialisable to JSON with a Markdown table.
+      <code>PROVENANCE</code> records what produced a report, and
+      <code>compare_reports()</code> diffs two runs.
+    </p>
+    <p>
+      The point is that a contributed defense is measured on the same scenarios as
+      everything else, so results are comparable rather than self-reported. Runs are
+      reproducible from the seed.
+    </p>
+
+    <h2 id="extending">Extension points</h2>
+    <p>These are the interfaces to implement if you want to extend OpenMed rather than fork it:</p>
+    <table>
+      <thead><tr><th>Interface</th><th>Implement to add</th></tr></thead>
+      <tbody>
+        <tr><td><code>Attestor</code></td><td>A real TEE backend (SGX/TDX, SEV-SNP)</td></tr>
+        <tr><td><code>LedgerBackend</code></td><td>A permissioned or distributed ledger</td></tr>
+        <tr><td><code>Signer</code> / <code>Verifier</code></td><td>An HSM or external key-management system</td></tr>
+        <tr><td>Aggregator callable</td><td>A new robust aggregation rule (register it in <code>AGGREGATORS</code>)</td></tr>
+        <tr><td><code>Selector</code></td><td>A new client-selection strategy</td></tr>
+        <tr><td><code>Check</code></td><td>A new automated quality gate</td></tr>
+        <tr><td><code>LLMSummarizer</code></td><td>A different local summarisation model</td></tr>
+        <tr><td>Attack callable</td><td>A new attack for the benchmark harness</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Adding an aggregator or an attack and opening a pull request against the benchmark
+      harness is the shortest path from a research idea to something other people can
+      reproduce. See <a href="community.html">community</a>.
+    </p>
+
+  </main>
+</div>
+</div>
+
+<footer class="site-footer">
+  <div class="inner">
+    <div>OpenMed — Apache-2.0. No patient data is distributed with this project.</div>
+    <div>
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing">GitHub</a> ·
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/SECURITY.md">Security</a> ·
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/CODE_OF_CONDUCT.md">Code of conduct</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

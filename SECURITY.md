@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please report suspected vulnerabilities privately to the maintainers (open a
-GitHub security advisory or email the address in `CITATION.cff`). Do not open a
+GitHub security advisory, which is the preferred and supported channel). Do not open a
 public issue for undisclosed vulnerabilities. We aim to acknowledge reports
 within a few business days.
 
@@ -26,7 +26,7 @@ functional placeholder.
 
 ## What the Byzantine-robust aggregators do and do not guarantee
 
-The aggregators (Krum, coordinate median, trimmed mean) tolerate a **bounded**
+The aggregators (Krum, Multi-Krum, coordinate median, trimmed mean, norm clipping, centered clipping) tolerate a **bounded**
 fraction of malicious updates under stated conditions (see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)). They do not defend against:
 

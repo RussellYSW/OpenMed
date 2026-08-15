@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quickstart — OpenMed</title>
+<meta name="description" content="Install OpenMed, run the federated defense demo, publish and certify a model, and generate a quality report — in a few minutes, with no data required.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231c5d99'/><path d='M9 20.5 16 8l7 12.5H9Z' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="index.html">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="7" fill="#1c5d99"/>
+        <path d="M9 20.5 16 8l7 12.5H9Z" fill="none" stroke="white" stroke-width="2.4" stroke-linejoin="round"/>
+      </svg>
+      OpenMed
+    </a>
+    <nav class="nav">
+      <a href="index.html">Overview</a>
+      <a href="quickstart.html" class="active">Quickstart</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="governance.html">Governance</a>
+      <a href="community.html">Community</a>
+      <a class="gh" href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="layout">
+
+  <aside class="sidebar">
+    <h4>Quickstart</h4>
+    <ul>
+      <li><a href="#install">Install</a></li>
+      <li><a href="#demo1">Defense demo</a></li>
+      <li><a href="#demo2">Model commons demo</a></li>
+      <li><a href="#benchmark">Benchmark grid</a></li>
+      <li><a href="#api">Using the API</a></li>
+      <li><a href="#next">Next steps</a></li>
+      <li><a href="#trouble">Troubleshooting</a></li>
+    </ul>
+    <h4>Documentation</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="architecture.html">Architecture</a></li>
+      <li><a href="governance.html">Governance</a></li>
+      <li><a href="community.html">Community</a></li>
+    </ul>
+  </aside>
+
+  <main>
+    <h1>Quickstart</h1>
+    <p class="lede">
+      Everything below runs on synthetic data generated in-process. You do not need a
+      dataset, credentials, a GPU, or a network connection.
+    </p>
+
+    <h2 id="install">Install</h2>
+    <p>Python 3.9 or newer. The only required runtime dependency is numpy.</p>
+    <pre><code>git clone https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing.git
+cd Trusted-TEE-for-Data-Sharing
+pip install -e ".[dev]"</code></pre>
+    <p>Confirm the install:</p>
+    <pre><code>python -m pytest -q</code></pre>
+    <div class="note">
+      <p>
+        <code>cryptography</code> is optional and <strong>not installed by
+        <code>".[dev]"</code></strong>, so the default is HMAC. With it installed, the
+        ledger signs blocks with Ed25519.
+        <code>trustfed.ledger.HAVE_CRYPTOGRAPHY</code> tells you which you got. The HMAC
+        fallback gives integrity under a shared secret — it is not a signature, gives no
+        non-repudiation, and a verifier can forge blocks. The default key is a constant in
+        the source and is for demos only.
+      </p>
+    </div>
+
+    <h2 id="demo1">1. The defense demo</h2>
+    <p>
+      This is the shortest path to seeing what the project is for. Several sites train one
+      Parkinson's rapid-decline classifier; some of them are malicious.
+    </p>
+    <pre><code>python examples/parkinson_decline/run_demo.py</code></pre>
+    <p>It walks through, in order:</p>
+    <ul>
+      <li>A clean baseline — what the model scores when every site is honest.</li>
+      <li>The same run under poisoning with <code>fedavg</code>, which has no Byzantine tolerance. It degrades under the scaling attack, and collapses outright under sign-flip and adaptive attacks.</li>
+      <li>The same attack against <code>coordinate_median</code>, <code>trimmed_mean</code>, and <code>multi_krum</code>, which hold near the clean baseline.</li>
+      <li>An <strong>adaptive</strong> attacker that knows which defense is running — the row that separates defenses which actually work from defenses that only survive naive attacks.</li>
+      <li>The attestation gate on, so code-tampered sites are rejected <em>before</em> aggregation.</li>
+      <li>A quality report on the resulting model bundle, as a reviewer would read it.</li>
+    </ul>
+    <div class="note">
+      <p>
+        The demo's quality report ends in <code>FAIL</code> on purpose. The synthetic model
+        has a subgroup performance gap and an incomplete model card, and the gate is
+        supposed to say so. A gate that passes everything is not a gate.
+      </p>
+    </div>
+
+    <h2 id="demo2">2. The model commons demo</h2>
+    <p>The trust plane end to end — publish, certify, derive, verify, credit.</p>
+    <pre><code>python examples/model_commons/run_demo.py</code></pre>
+    <p>It demonstrates:</p>
+    <ol class="steps">
+      <li><strong>Publish</strong> a model bundle to the registry. The publish event is written to the ledger.</li>
+      <li><strong>Certify</strong> it — and watch the authority <em>refuse</em> the submitting site's own signature, then accept once reviewers from distinct institutions sign.</li>
+      <li><strong>Derive</strong> a fine-tuned model from the certified base. The registry links it to its parent automatically.</li>
+      <li><strong>Verify lineage</strong> — one call walks the derived model's full ancestry and reports whether every step is attested.</li>
+      <li><strong>Credit</strong> — contributors accrue standing, and the reciprocity policy refuses an evaluation request from a site that has never served as an evaluator, with a machine-readable reason.</li>
+      <li><strong>Tamper evidence</strong> — the demo edits a block on disk and re-verifies. Verification fails and names the reason (<code>payload_mutated</code>).</li>
+    </ol>
+
+    <h2 id="benchmark">3. The benchmark grid</h2>
+    <p>Compare every aggregator against the default attack set on identical scenarios:</p>
+    <pre><code>python -m trustfed.benchmark</code></pre>
+    <p>
+      The default grid is 49 scenarios: 7 aggregators &times; 4 attacks &times; 2 Byzantine
+      counts. <code>--attacks</code> selects the others (<code>gaussian</code>,
+      <code>scaling</code>, <code>model_replacement</code>, <code>feature_corruption</code>).
+      The run is deterministic from its seed and finishes quickly. It prints a results table
+      plus the documented tolerance bound for each rule, so a poor cell can be read
+      correctly: if a scenario exceeds a rule's proven tolerance, a bad score there is
+      expected behaviour, not a defect. Reports serialise to JSON, and
+      <code>compare_reports()</code> diffs two runs.
+    </p>
+    <div class="note">
+      <p>
+        If you are contributing a new defense, this is the bar: add it to
+        <code>AGGREGATORS</code>, run the grid, and put the numbers in your pull request.
+        Everyone's results come from the same harness.
+      </p>
+    </div>
+
+    <h2 id="api">Using the API</h2>
+    <p>A minimal federated run with a robust aggregator and the attestation gate on:</p>
+    <pre><code>from trustfed.data import make_federated_parkinson
+from trustfed.federated import Client, Server, APPROVED_CODE_IDENTITY
+from trustfed.aggregation import multi_krum
+from trustfed.attestation import MockSoftwareAttestor, measure_code
+
+sites, X_test, y_test = make_federated_parkinson(n_sites=6, seed=0)
+
+attestor = MockSoftwareAttestor(
+    root_key=b"demo-root-key",
+    approved_measurements=[measure_code(APPROVED_CODE_IDENTITY)],
+)
+
+clients = [Client(s.site_id, s.X, s.y, attestor=attestor) for s in sites]
+
+server = Server(
+    n_features=X_test.shape[1],
+    aggregator=multi_krum,
+    attestor=attestor,
+    n_byzantine=1,
+)
+
+for r in server.fit(clients, X_test, y_test, rounds=10):
+    print(f"round {r.round:>2}  auc={r.auc:.3f}  "
+          f"accepted={r.n_accepted}  rejected={r.n_rejected}")</code></pre>
+
+    <p>
+      Certifying a model — note that the authority <em>refuses</em> the submitting
+      institution's own signature:
+    </p>
+    <pre><code>from trustfed.ledger import InMemoryLedger
+from trustfed.certification import (
+    CertificationAuthority, ReviewerKeyring, Reviewer,
+    ThresholdPolicy, ConflictOfInterestError,
+)
+
+keyring = ReviewerKeyring(seed=b"demo-reviewer-keys")
+keyring.register(Reviewer("rev_a1", "INST_A", role="ml"))
+keyring.register(Reviewer("rev_b1", "INST_B", role="clinical"))
+keyring.register(Reviewer("rev_c1", "INST_C", role="clinical"))
+
+authority = CertificationAuthority(
+    keyring,
+    ledger=InMemoryLedger(),
+    policy=ThresholdPolicy(k=2, min_institutions=2),
+)
+
+authority.submit("bundle-123", owner_institution="INST_A", submitted_by="rev_a1")
+
+try:
+    authority.review("bundle-123", "rev_a1", "approve", statement="ship it")
+except ConflictOfInterestError as exc:
+    print("refused:", exc)
+    # refused: [self_certification] rev_a1 belongs to the submitting
+    #          institution 'INST_A'
+
+authority.review("bundle-123", "rev_b1", "approve", statement="protocol checks out")
+authority.review("bundle-123", "rev_c1", "approve", statement="subgroups reviewed")
+
+case = authority.certify("bundle-123")
+print(case.state)                    # CertificationState.CERTIFIED
+print(authority.verify_log().ok)     # True</code></pre>
+    <p>
+      See <a href="architecture.html">architecture</a> for the full component map and the
+      interfaces to implement when extending any of this.
+    </p>
+
+    <h2 id="next">Next steps</h2>
+    <ul>
+      <li>Read the <a href="architecture.html">architecture</a> to see how the pieces connect.</li>
+      <li>Read the <a href="governance.html">governance</a> draft — especially if you disagree with it.</li>
+      <li>Find something to work on in <a href="community.html#help">where we need help</a>.</li>
+    </ul>
+
+    <h2 id="trouble">Troubleshooting</h2>
+    <table>
+      <thead><tr><th>Symptom</th><th>Cause and fix</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>ModuleNotFoundError: trustfed</code></td>
+          <td>Install in editable mode from the repository root: <code>pip install -e ".[dev]"</code></td>
+        </tr>
+        <tr>
+          <td>Ledger tests skipped</td>
+          <td><code>cryptography</code> is not installed. Expected — the Ed25519 tests skip rather than fail. Install it to run them.</td>
+        </tr>
+        <tr>
+          <td>Quality report says <code>FAIL</code></td>
+          <td>Expected on the demo bundle. The synthetic model really does have a subgroup gap.</td>
+        </tr>
+        <tr>
+          <td>A benchmark cell looks bad</td>
+          <td>Check the tolerance table printed underneath. The scenario may exceed that rule's documented bound.</td>
+        </tr>
+        <tr>
+          <td>Something else</td>
+          <td><a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/issues">Open an issue</a>. Quickstart friction is treated as a defect.</td>
+        </tr>
+      </tbody>
+    </table>
+
+  </main>
+</div>
+</div>
+
+<footer class="site-footer">
+  <div class="inner">
+    <div>OpenMed — Apache-2.0. No patient data is distributed with this project.</div>
+    <div>
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing">GitHub</a> ·
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/SECURITY.md">Security</a> ·
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/CODE_OF_CONDUCT.md">Code of conduct</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

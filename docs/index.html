@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenMed — a governed commons for clinical AI models</title>
+<meta name="description" content="OpenMed is an open-source platform for secure, verifiable sharing of clinical AI models: attested federated co-training, tamper-evident lineage, a model registry, and multi-party certification.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231c5d99'/><path d='M9 20.5 16 8l7 12.5H9Z' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="index.html">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="7" fill="#1c5d99"/>
+        <path d="M9 20.5 16 8l7 12.5H9Z" fill="none" stroke="white" stroke-width="2.4" stroke-linejoin="round"/>
+      </svg>
+      OpenMed
+    </a>
+    <nav class="nav">
+      <a href="index.html" class="active">Overview</a>
+      <a href="quickstart.html">Quickstart</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="governance.html">Governance</a>
+      <a href="community.html">Community</a>
+      <a class="gh" href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <h1>A governed commons for clinical AI models</h1>
+    <p class="lede">
+      Hospitals train models they cannot share, review, or safely reuse. OpenMed is an
+      open-source platform for secure, verifiable exchange of clinical AI models —
+      federated co-training that tolerates malicious sites, tamper-evident provenance for
+      every model version, and certification that no single institution can grant itself.
+    </p>
+    <div class="hero-actions">
+      <a class="btn primary" href="quickstart.html">Get started</a>
+      <a class="btn" href="architecture.html">Read the architecture</a>
+      <a class="btn" href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing">Source on GitHub</a>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+<div class="layout">
+
+  <aside class="sidebar">
+    <h4>Overview</h4>
+    <ul>
+      <li><a href="#problem">The problem</a></li>
+      <li><a href="#why-ose">Why a commons</a></li>
+      <li><a href="#components">Components</a></li>
+      <li><a href="#threat-model">Threat model</a></li>
+      <li><a href="#scope">Scope and limits</a></li>
+    </ul>
+    <h4>Documentation</h4>
+    <ul>
+      <li><a href="quickstart.html">Quickstart</a></li>
+      <li><a href="architecture.html">Architecture</a></li>
+      <li><a href="governance.html">Governance</a></li>
+      <li><a href="community.html">Community</a></li>
+    </ul>
+    <h4>Repository</h4>
+    <ul>
+      <li><a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing">Source</a></li>
+      <li><a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/issues">Issues</a></li>
+      <li><a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/CONTRIBUTING.md">Contributing</a></li>
+      <li><a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/SECURITY.md">Security policy</a></li>
+    </ul>
+  </aside>
+
+  <main>
+
+    <h2 id="problem">The problem</h2>
+    <p>
+      Patient privacy keeps training data inside hospital walls, so most clinical models
+      are trained at a single center. A model that has only ever seen one hospital's
+      patients, scanners, and practice patterns may not generalize beyond that
+      institution — and may encode its inequities.
+    </p>
+    <p>Three questions have no good answer once such a model exists:</p>
+    <ul>
+      <li><strong>Is it any good?</strong> External validation cohorts are hard to reach.</li>
+      <li><strong>Is it safe and fair enough to use?</strong> No independent review exists, and nobody tells the treating physician, in clinical terms, where the model stops being trustworthy.</li>
+      <li><strong>Why start from zero?</strong> Another team may already have trained the model, but there is no trusted path to obtain and fine-tune it.</li>
+    </ul>
+    <p>
+      Existing infrastructure addresses parts of this. Model zoos distribute weights but do
+      not review, evaluate, or secure them. Federated benchmarks evaluate but do not govern
+      or track provenance. Federated-learning frameworks orchestrate training but assume
+      <em>every participating site is honest</em>.
+    </p>
+
+    <h2 id="why-ose">Why this has to be a commons</h2>
+    <p>
+      A vendor cannot do it: hospitals will not bet patient care on a registry they are not
+      allowed to inspect. A single hospital cannot do it: none has data from enough sites,
+      and none has the standing to sit in judgment on the others. A federal agency cannot
+      do it: running a shared model repository is daily operational work.
+    </p>
+    <p>Closing the gap needs three properties at once:</p>
+    <div class="grid">
+      <div class="card">
+        <h3>Transparency</h3>
+        <p>The code is open and the review criteria are published, so a decision can be checked rather than trusted.</p>
+      </div>
+      <div class="card">
+        <h3>Neutrality</h3>
+        <p>No single institution controls governance, and no site can certify its own model.</p>
+      </div>
+      <div class="card">
+        <h3>Network effects</h3>
+        <p>Every accepted contribution improves the shared base model for everyone who uses it.</p>
+      </div>
+    </div>
+
+    <h2 id="components">Components</h2>
+    <p>
+      OpenMed is six components: five technical, plus the credit-and-reciprocity mechanism
+      that gives institutions a reason to contribute rather than only consume.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <span class="num">01</span>
+        <h3>Secure federated co-training</h3>
+        <p>Byzantine-resilient aggregation (coordinate median, trimmed mean, Krum / Multi-Krum, bounded-influence rules) with principled client selection, for sites that choose to train together.</p>
+      </div>
+      <div class="card">
+        <span class="num">02</span>
+        <h3>Tamper-evident lineage</h3>
+        <p>An append-only, signed hash chain records every model version, its parent, the attestation of the pipeline that produced it, and the signatures that certified it. Weights and patient data stay on premises. Tamper-<em>evident</em>, not immutable — see scope and limits.</p>
+      </div>
+      <div class="card">
+        <span class="num">03</span>
+        <h3>Model registry</h3>
+        <p>Versioned bundles of weights, model card, pipeline attestation, evaluation report, and fine-tuning manual. Derived models auto-link to their parent, so the registry accumulates a lineage graph rather than a flat file list.</p>
+      </div>
+      <div class="card">
+        <span class="num">04</span>
+        <h3>Multi-party certification</h3>
+        <p>A model becomes a certified base only when reviewers from more than one institution sign off, enforced as a k-of-n threshold policy over institution-bound keys. Decisions are appended to a signed hash chain, so a retroactive edit is detectable by anyone holding an independent anchor.</p>
+      </div>
+      <div class="card">
+        <span class="num">05</span>
+        <h3>Automated quality analysis</h3>
+        <p>A local analysis pass drafts a technical quality report on each submission — model-card completeness, metric sanity, subgroup performance gaps, a membership-inference leakage screen — published alongside the human review. It supplements human review rather than replacing it.</p>
+      </div>
+      <div class="card">
+        <span class="num">06</span>
+        <h3>Credit and reciprocity</h3>
+        <p>Citable identifiers and release attribution for accepted models, contributor standing that maps to governance weight, and a reciprocity rule: to receive a multi-site evaluation, a site serves as an evaluator for others.</p>
+      </div>
+    </div>
+
+    <h2 id="threat-model">Threat model</h2>
+    <p>
+      OpenMed assumes <strong>mutually distrusting sites, any minority of which may be
+      actively malicious</strong>. No site releases raw patient data, and no site is
+      trusted to self-report what code it ran.
+    </p>
+    <table>
+      <thead>
+        <tr><th>Risk</th><th>Control</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>An unapproved or tampered client contributes an update</td>
+          <td>Attestation gate: every update carries a quote naming the code measurement that produced it. Nonce freshness is available but off by default</td>
+        </tr>
+        <tr>
+          <td>Poisoned updates from clients that pass attestation</td>
+          <td>Byzantine-robust aggregation bounds the influence of a malicious minority</td>
+        </tr>
+        <tr>
+          <td>Version substitution or silent rollback of a published model</td>
+          <td>Append-only signed chain; verification detects tampering always, and truncation when checked against an anchor</td>
+        </tr>
+        <tr>
+          <td>A site certifying its own model</td>
+          <td>Threshold policy requires signatures from distinct institutions; self-certification is refused when the case is opened with the bundle itself</td>
+        </tr>
+        <tr>
+          <td>A published model leaking its training data</td>
+          <td>A membership-inference screen in the quality gate — the cheapest known attack, not a privacy guarantee</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="scope">Scope and limits</h2>
+    <div class="note warn">
+      <p>
+        <strong>Read this before deploying anything.</strong> The reference attestor is a
+        <em>software mock</em>: it demonstrates the protocol and lets the accept/reject logic
+        be tested, but it is not a hardware root of trust and is not a security boundary.
+        Real TEE backends (Intel SGX/TDX, AMD SEV-SNP) plug in behind the same interface.
+      </p>
+    </div>
+    <p>
+      The ledger shipped in this repository is a local, dependency-free append-only hash
+      chain. It gives tamper evidence within one deployment; it is not a multi-organization
+      consensus system, and a permissioned-ledger backend <em>can be added</em> behind the
+      same <code>LedgerBackend</code> interface but is not shipped. Truncation is detected
+      only against an anchor, the default signing key is a constant in the source, and a
+      clean install signs with HMAC rather than Ed25519 — the
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing#security-caveats">security caveats</a>
+      list every condition in full.
+    </p>
+    <p>
+      <strong>No patient data ships with this project</strong>, and none is required to run
+      it. Every example and test generates synthetic cohorts in-process from a fixed seed.
+      See <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/docs/DATA.md">docs/DATA.md</a>
+      for the data policy and the CI check that enforces it.
+    </p>
+
+    <hr>
+
+    <h2>Where to go next</h2>
+    <ul>
+      <li><a href="quickstart.html">Quickstart</a> — install, run the federated demo, publish and certify a model.</li>
+      <li><a href="architecture.html">Architecture</a> — how the six components fit together, and the interfaces between them.</li>
+      <li><a href="governance.html">Governance</a> — who decides what, how disputes are resolved, and how the project is licensed.</li>
+      <li><a href="community.html">Community</a> — how to contribute, what we need help with, and how to reach the maintainers.</li>
+    </ul>
+
+  </main>
+</div>
+</div>
+
+<footer class="site-footer">
+  <div class="inner">
+    <div>OpenMed — Apache-2.0. No patient data is distributed with this project.</div>
+    <div>
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing">GitHub</a> ·
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/SECURITY.md">Security</a> ·
+      <a href="https://github.com/RussellYSW/Trusted-TEE-for-Data-Sharing/blob/main/CODE_OF_CONDUCT.md">Code of conduct</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

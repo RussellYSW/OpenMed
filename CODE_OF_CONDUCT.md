@@ -25,7 +25,8 @@ explicit permission.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the project maintainers at the contact listed in `CITATION.cff`. All
+reported to the project maintainers by opening a GitHub security advisory,
+which is private to the maintainers. All
 complaints will be reviewed and investigated promptly and fairly.
 
 This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org),
