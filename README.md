@@ -4,8 +4,10 @@
 sites, tamper-evident provenance, and certification no single institution can grant
 itself.**
 
-> **OpenMed** is the ecosystem; **`trustfed`** is the Python package that implements it.
+> **OpenMed (Open NeuroAI)** is the ecosystem; **`trustfed`** is the Python package that implements it.
 > The two names refer to the same project.
+> Our system is new and non-profit. Initially, we will focus on the Neuroscience AI ecosystem.
+> The community name and similar details are still under discussion, since there are already many projects using the name "OpenMed."
 
 [![CI](https://github.com/RussellYSW/OpenMed/actions/workflows/ci.yml/badge.svg)](https://github.com/RussellYSW/OpenMed/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.9%2B-blue)
