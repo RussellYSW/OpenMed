@@ -1,4 +1,4 @@
-# OpenMed
+# OpenMed (Open NeuroAI)
 
 **A governed commons for clinical AI models — federated training that tolerates malicious
 sites, tamper-evident provenance, and certification no single institution can grant
