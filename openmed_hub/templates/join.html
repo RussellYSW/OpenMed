@@ -2,12 +2,14 @@
 {% block title %}Join{% endblock %}
 {% block content %}
 <h1>Join an existing institution</h1>
-<form method="post" action="/join" class="card">
+<form method="post" action="/join" class="card"><input type="hidden" name="csrf" value="{{ csrf_token }}">
   <label>Institution <select name="institution_slug" required>{% for i in institutions %}<option value="{{ i.slug }}">{{ i.name }} ({{ i.slug }})</option>{% endfor %}</select></label>
   <label>Email <input name="email" type="email" required></label>
   <label>Name <input name="user_name"></label>
-  <label>Password (8+ characters) <input name="password" type="password" minlength="8" required></label>
+  <label>Password (10+ characters) <input name="password" type="password" minlength="10" required></label>
+  <label>Invite code (optional) <input name="invite_code" placeholder="from your institution's admin"></label>
   <button class="btn">Create account</button>
 </form>
+<p class="small">Without an invite code or an email in a domain the institution has approved, your membership waits for one of its admins. That is what keeps a stranger from acting in your institution's name.</p>
 <p>Your institution is not listed? <a href="/register">Register it.</a></p>
 {% endblock %}

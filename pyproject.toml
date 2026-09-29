@@ -42,6 +42,7 @@ hub = [
     "sqlalchemy>=2.0",
     "cryptography>=42",
     "httpx>=0.27",
+    "segno>=1.6",
 ]
 
 [project.urls]

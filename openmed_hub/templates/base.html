@@ -19,7 +19,7 @@
       <a href="/evaluations">Evaluations</a>
       {% if user.is_admin %}<a href="/admin">Admin</a>{% endif %}
       <a href="/account">{{ user.email }}</a>
-      <form method="post" action="/logout" class="inline"><button class="link">Sign out</button></form>
+      <form method="post" action="/logout" class="inline"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="link">Sign out</button></form>
     {% else %}
       <a href="/login">Sign in</a>
       <a href="/register" class="cta">Register institution</a>

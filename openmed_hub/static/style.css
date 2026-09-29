@@ -50,3 +50,4 @@ pre.card-md{font-family:inherit}
 .filters a{margin-right:.6rem}.filters a.on{font-weight:700}
 .actions{margin:.8rem 0}
 details summary{cursor:pointer;color:var(--accent)}
+.qr svg{width:180px;height:180px;background:#fff;border:1px solid var(--line);border-radius:6px}

@@ -44,7 +44,7 @@
   {% endif %}
 
   {% if user and user.is_reviewer and not is_owner and s.state in ['submitted','under_review','remediated','certified'] %}
-  <form method="post" action="/models/{{ s.bundle_id }}/review" class="card">
+  <form method="post" action="/models/{{ s.bundle_id }}/review" class="card"><input type="hidden" name="csrf" value="{{ csrf_token }}">
     <h3>Sign a review as {{ user.reviewer_id }} ({{ user.reviewer_role_label }})</h3>
     <label>Decision <select name="decision"><option value="approve">approve</option><option value="reject">reject (withhold approval)</option><option value="block">block (open a dispute: unresolved subgroup harm, demonstrated leakage, …)</option></select></label>
     <label>Statement <textarea name="statement" rows="3" placeholder="What you checked and why you decided this way. This text is signed and logged."></textarea></label>
@@ -55,7 +55,7 @@
 
   {% if user %}
   <details class="card"><summary>Disputes, remediation, appeals</summary>
-    <form method="post" action="/models/{{ s.bundle_id }}/action">
+    <form method="post" action="/models/{{ s.bundle_id }}/action"><input type="hidden" name="csrf" value="{{ csrf_token }}">
       <label>Action <select name="action">
         <option value="dispute">dispute (any registered user; blocks the case)</option>
         {% if is_owner %}<option value="remediate">remediate (owner; clears prior approvals, reopens review)</option><option value="appeal">appeal (owner; to the advisory board)</option>{% endif %}

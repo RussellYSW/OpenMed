@@ -106,6 +106,36 @@ Environment variables, all optional:
 | `OPENMED_MAX_UPLOAD_BYTES` | 512 MiB | weights size limit |
 | `OPENMED_HUB_NAME`, `OPENMED_HUB_URL`, `OPENMED_SECRET_KEY` | — | cosmetics and the cookie/keyring secret |
 
+## Account security
+
+- **Passwords**: PBKDF2-HMAC-SHA256, per-user salt, at least 10 characters, not the email or
+  name, not on the common-password list.
+- **Two-factor authentication**: TOTP (RFC 6238) plus ten single-use recovery codes
+  (`/account`, or `POST /api/v1/auth/2fa/enroll` then `/confirm`). Required for the roles in
+  `OPENMED_REQUIRE_2FA_ROLES` (default: admin, maintainer, both reviewer roles): signing a
+  review, granting roles, approving measurements, resolving appeals and revoking are refused
+  without it. API login takes the code as `totp`; the web login has a second step.
+- **Sessions**: HttpOnly SameSite=Lax cookies signed with the hub secret and bound to the
+  user's security stamp; a password or second-factor change rotates the stamp and signs
+  every other session out. Cookies are `Secure` when `OPENMED_HUB_URL` is https or
+  `OPENMED_SECURE_COOKIES=1`.
+- **Throttling**: `OPENMED_LOGIN_RATE_LIMIT` attempts per address per ten minutes; the account
+  locks for `30 * 2^n` seconds after `OPENMED_LOCKOUT_THRESHOLD` failures, capped at
+  `OPENMED_LOCKOUT_MAX_SECONDS`.
+- **CSRF**: double-submit token on every HTML form (`openmed_csrf` cookie + `csrf` field).
+- **Membership**: joining needs the institution's invite code, an email in
+  `allowed_email_domains`, or an institution admin's approval; pending members cannot act.
+  Institution admins manage this on `/account`; the first account of an institution is its
+  admin.
+- **API tokens**: random 256-bit, stored hashed, revocable.
+- **Headers**: CSP, X-Frame-Options DENY, nosniff, Referrer-Policy, HSTS behind HTTPS.
+  Set `OPENMED_TRUST_PROXY=1` only behind a proxy you control, so the audit log records the
+  real client address.
+- **Audit log**: `/admin` and `GET /api/v1/admin/audit`.
+
+Not yet: email verification and self-service password reset (both need outgoing mail),
+WebAuthn security keys, single sign-on.
+
 ## What is and is not a security boundary here
 
 Read this before quoting the hub as an enforced control.

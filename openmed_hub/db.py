@@ -19,6 +19,8 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
+    inspect,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
@@ -37,6 +39,9 @@ ALL_ROLES = (
 REVIEWER_ROLES = (ROLE_REVIEWER_TECHNICAL, ROLE_REVIEWER_CLINICAL)
 
 INSTITUTION_KINDS = ("health_system", "medical_school", "research_lab", "company", "other")
+MEMBERSHIP_ACTIVE = "active"
+MEMBERSHIP_PENDING = "pending"
+MEMBERSHIP_REJECTED = "rejected"
 
 
 def utcnow() -> datetime:
@@ -65,8 +70,23 @@ class Institution(Base):
     #: Hub-held seed for the institution's service key, used to sign evaluation
     #: acknowledgements made through the web UI.
     service_key_seed: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    #: Joining without approval needs this code or an email in an allowed domain.
+    invite_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    allowed_email_domains: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     users: Mapped[List["User"]] = relationship(back_populates="institution")
+
+    @property
+    def domain_list(self) -> List[str]:
+        return [d.strip().lower() for d in (self.allowed_email_domains or "").split(",") if d.strip()]
+
+    @property
+    def active_users(self) -> List["User"]:
+        return [u for u in self.users if u.membership_active]
+
+    @property
+    def pending_users(self) -> List["User"]:
+        return [u for u in self.users if u.membership_status == MEMBERSHIP_PENDING]
 
     @property
     def node_verified(self) -> bool:
@@ -92,8 +112,35 @@ class User(Base):
     #: Client-held Ed25519 public key (hex). Present when the reviewer signs
     #: with their own key and submits detached signatures.
     reviewer_public_key: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    #: Account security.
+    security_stamp: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    totp_secret: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    totp_enabled_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    recovery_codes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    failed_logins: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    password_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    #: Institution membership: active, pending (awaiting approval), rejected.
+    membership_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    is_institution_admin: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
 
     institution: Mapped[Institution] = relationship(back_populates="users")
+
+    @property
+    def totp_enabled(self) -> bool:
+        return self.totp_enabled_at is not None and bool(self.totp_secret)
+
+    @property
+    def stamp(self) -> str:
+        return self.security_stamp or ""
+
+    @property
+    def membership_active(self) -> bool:
+        return (self.membership_status or MEMBERSHIP_ACTIVE) == MEMBERSHIP_ACTIVE
+
+    @property
+    def institution_admin(self) -> bool:
+        return bool(self.is_institution_admin)
 
     @property
     def role_list(self) -> List[str]:
@@ -244,6 +291,21 @@ class ApprovedMeasurement(Base):
         return self.revoked_at is None
 
 
+class AuditEvent(Base):
+    """Security-relevant account events (logins, role changes, key changes)."""
+
+    __tablename__ = "audit_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    actor_email: Mapped[str] = mapped_column(String(200), default="")
+    actor_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    subject: Mapped[str] = mapped_column(String(200), default="")
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    detail: Mapped[str] = mapped_column(Text, default="")
+
+
 class Download(Base):
     __tablename__ = "downloads"
 
@@ -264,6 +326,30 @@ def make_session_factory(engine):
     return sessionmaker(bind=engine, expire_on_commit=False, future=True)
 
 
+def ensure_columns(engine) -> List[str]:
+    """Add columns the models declare but an older database lacks.
+
+    SQLite cannot alter much, but ``ADD COLUMN`` for nullable columns is enough
+    for additive schema changes; every new column here is nullable and the
+    model properties treat ``NULL`` as the default. Returns what was added.
+    """
+    added: List[str] = []
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if table.name not in existing_tables:
+                continue
+            present = {c["name"] for c in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name in present:
+                    continue
+                ddl = column.type.compile(dialect=engine.dialect)
+                conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {ddl}'))
+                added.append(f"{table.name}.{column.name}")
+    return added
+
+
 __all__ = [
     "ALL_ROLES",
     "INSTITUTION_KINDS",
@@ -275,7 +361,11 @@ __all__ = [
     "ROLE_REVIEWER_TECHNICAL",
     "ApiToken",
     "ApprovedMeasurement",
+    "AuditEvent",
     "Base",
+    "MEMBERSHIP_ACTIVE",
+    "MEMBERSHIP_PENDING",
+    "MEMBERSHIP_REJECTED",
     "Download",
     "EvaluationTask",
     "Institution",
@@ -283,6 +373,7 @@ __all__ = [
     "Review",
     "Submission",
     "User",
+    "ensure_columns",
     "make_engine",
     "make_session_factory",
     "utcnow",

@@ -42,11 +42,36 @@ class JoinIn(BaseModel):
     email: str
     name: str = ""
     password: str
+    invite_code: Optional[str] = None
 
 
 class LoginIn(BaseModel):
     email: str
     password: str
+    totp: Optional[str] = None
+
+
+class TotpCodeIn(BaseModel):
+    code: str
+
+
+class TotpDisableIn(BaseModel):
+    password: str
+    code: str
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class MemberDecisionIn(BaseModel):
+    approve: bool
+
+
+class InstitutionSettingsIn(BaseModel):
+    allowed_email_domains: Optional[str] = None
+    rotate_invite_code: bool = False
 
 
 class TokenIn(BaseModel):
@@ -120,6 +145,9 @@ def _user_dict(user: User) -> Dict[str, Any]:
         "reviewer_key": (
             "client-held" if user.reviewer_public_key else ("hub-held" if user.reviewer_key_seed else None)
         ),
+        "membership": user.membership_status or "active",
+        "institution_admin": user.institution_admin,
+        "totp_enabled": user.totp_enabled,
     }
 
 
@@ -169,14 +197,68 @@ def get_institution(slug: str, svc: HubServices = Depends(get_services)):
 @router.post("/auth/join", status_code=201)
 def join(body: JoinIn, svc: HubServices = Depends(get_services)):
     institution = svc.institution_by_slug(body.institution_slug)
-    user = svc.register_user(email=body.email, name=body.name, password=body.password, institution=institution)
+    user = svc.register_user(
+        email=body.email, name=body.name, password=body.password, institution=institution, invite_code=body.invite_code
+    )
     return {"user": _user_dict(user), "token": svc.create_token(user, label="registration")}
 
 
 @router.post("/auth/login")
 def login(body: LoginIn, svc: HubServices = Depends(get_services)):
-    user = svc.authenticate(body.email, body.password)
+    user = svc.login(body.email, body.password, body.totp)
     return {"user": _user_dict(user), "token": svc.create_token(user, label="login")}
+
+
+@router.post("/auth/2fa/enroll")
+def totp_enroll(user: User = Depends(current_user), svc: HubServices = Depends(get_services)):
+    return svc.start_totp_enrollment(user)
+
+
+@router.post("/auth/2fa/confirm")
+def totp_confirm(body: TotpCodeIn, user: User = Depends(current_user), svc: HubServices = Depends(get_services)):
+    return {"recovery_codes": svc.confirm_totp(user, body.code), "user": _user_dict(user)}
+
+
+@router.post("/auth/2fa/disable")
+def totp_disable(body: TotpDisableIn, user: User = Depends(current_user), svc: HubServices = Depends(get_services)):
+    return _user_dict(svc.disable_totp(user, password=body.password, code=body.code))
+
+
+@router.post("/auth/2fa/recovery-codes")
+def totp_recovery(body: TotpCodeIn, user: User = Depends(current_user), svc: HubServices = Depends(get_services)):
+    return {"recovery_codes": svc.regenerate_recovery_codes(user, code=body.code)}
+
+
+@router.post("/auth/password")
+def change_password(body: PasswordChangeIn, user: User = Depends(current_user), svc: HubServices = Depends(get_services)):
+    svc.change_password(user, current_password=body.current_password, new_password=body.new_password)
+    return {"ok": True, "note": "other sessions have been signed out; API tokens remain valid"}
+
+
+@router.get("/institutions/{slug}/members")
+def list_members(slug: str, user: User = Depends(current_user), svc: HubServices = Depends(get_services)):
+    institution = svc.institution_by_slug(slug)
+    if user.institution_id != institution.id and not user.is_admin:
+        raise HubError(403, "not_member", "only members see the member list")
+    return [_user_dict(u) for u in svc.members(institution)]
+
+
+@router.post("/institutions/{slug}/members/{user_id}")
+def decide_member(slug: str, user_id: int, body: MemberDecisionIn, user: User = Depends(current_user), svc: HubServices = Depends(get_services)):
+    institution = svc.institution_by_slug(slug)
+    member = svc.db.get(User, user_id)
+    if member is None or member.institution_id != institution.id:
+        raise HubError(404, "member_not_found", "no such member")
+    return _user_dict(svc.approve_member(actor=user, member=member, approve=body.approve))
+
+
+@router.post("/institutions/{slug}/settings")
+def institution_settings(slug: str, body: InstitutionSettingsIn, user: User = Depends(current_user), svc: HubServices = Depends(get_services)):
+    institution = svc.update_institution_settings(
+        actor=user, institution=svc.institution_by_slug(slug),
+        allowed_email_domains=body.allowed_email_domains, rotate_invite_code=body.rotate_invite_code,
+    )
+    return {**_institution_dict(svc, institution), "invite_code": institution.invite_code, "allowed_email_domains": institution.domain_list}
 
 
 @router.get("/auth/me")
@@ -202,7 +284,7 @@ def node_key(slug: str, body: NodeKeyIn, user: User = Depends(current_user), svc
     institution = svc.institution_by_slug(slug)
     if user.institution_id != institution.id and not user.is_admin:
         raise HubError(403, "not_member", "only members register their institution's node")
-    nonce = svc.begin_node_registration(institution, body.public_key)
+    nonce = svc.begin_node_registration(institution, body.public_key, actor=user)
     return {"nonce": nonce, "expires_in_seconds": 900}
 
 
@@ -403,16 +485,24 @@ def verify_ledgers(svc: HubServices = Depends(get_services)):
 
 
 @router.post("/admin/users/{user_id}/roles")
-def set_roles(user_id: int, body: RolesIn, _: User = Depends(admin_user), svc: HubServices = Depends(get_services)):
+def set_roles(user_id: int, body: RolesIn, admin: User = Depends(admin_user), svc: HubServices = Depends(get_services)):
     target = svc.db.get(User, user_id)
     if target is None:
         raise HubError(404, "user_not_found", f"no user {user_id}")
-    return _user_dict(svc.grant_roles(target, body.roles))
+    return _user_dict(svc.grant_roles(target, body.roles, actor=admin))
 
 
 @router.post("/admin/institutions/{slug}/founding")
-def set_founding(slug: str, body: FoundingIn, _: User = Depends(admin_user), svc: HubServices = Depends(get_services)):
-    return _institution_dict(svc, svc.set_founding(svc.institution_by_slug(slug), body.is_founding))
+def set_founding(slug: str, body: FoundingIn, admin: User = Depends(admin_user), svc: HubServices = Depends(get_services)):
+    return _institution_dict(svc, svc.set_founding(svc.institution_by_slug(slug), body.is_founding, actor=admin))
+
+
+@router.get("/admin/audit")
+def audit_log(limit: int = 200, _: User = Depends(admin_user), svc: HubServices = Depends(get_services)):
+    return [
+        {"at": e.created_at.isoformat(), "action": e.action, "actor": e.actor_email, "subject": e.subject, "ip": e.ip, "detail": e.detail}
+        for e in svc.audit_log(limit=min(max(limit, 1), 1000))
+    ]
 
 
 @router.get("/admin/users")

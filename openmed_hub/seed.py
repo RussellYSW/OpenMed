@@ -93,7 +93,24 @@ def seed_demo(svc: HubServices) -> Dict[str, Any]:
         users[slug] = user
         signers[slug] = _node(svc, institution)
 
-    svc.grant_roles(users["umiami"], [ROLE_ADMIN, ROLE_MAINTAINER, ROLE_REVIEWER_TECHNICAL])
+    # Privileged roles need a second factor; enrol each demo user and keep the
+    # secret so the summary can hand it to an authenticator app.
+    from openmed_hub.totp import totp
+
+    totp_secrets: Dict[str, str] = {}
+
+    def enrol(user) -> None:
+        secret = svc.start_totp_enrollment(user)["secret"]
+        svc.confirm_totp(user, totp(secret))
+        totp_secrets[user.email] = secret
+
+    reviewer2 = svc.register_user(
+        email="clinician@umaryland.example", name="UMaryland clinical reviewer", password=DEMO_PASSWORD,
+        institution=institutions["umaryland"], invite_code=institutions["umaryland"].invite_code,
+    )
+    for user in (users["umiami"], users["umaryland"], users["va-maryland"], users["medstar"], reviewer2):
+        enrol(user)
+    svc.grant_roles(users["umiami"], [ROLE_ADMIN, ROLE_MAINTAINER, ROLE_REVIEWER_TECHNICAL], actor=users["umiami"])
 
     # The maintainer approves the measurement of the installed pipeline, which
     # is exactly what `openmed measure` prints at a site running this release.
@@ -109,12 +126,8 @@ def seed_demo(svc: HubServices) -> Dict[str, Any]:
             return {"quote": _quote(svc, users[slug], signers[slug], measured.measurement)}
         return {"code_identity": "openmed-training-pipeline@v1", "config": "training-config-v1"}
     for slug in ("umaryland", "va-maryland", "medstar"):
-        svc.grant_roles(users[slug], [ROLE_REVIEWER_TECHNICAL, ROLE_REVIEWER_CLINICAL])
-    reviewer2 = svc.register_user(
-        email="clinician@umaryland.example", name="UMaryland clinical reviewer", password=DEMO_PASSWORD,
-        institution=institutions["umaryland"],
-    )
-    svc.grant_roles(reviewer2, [ROLE_REVIEWER_CLINICAL])
+        svc.grant_roles(users[slug], [ROLE_REVIEWER_TECHNICAL, ROLE_REVIEWER_CLINICAL], actor=users["umiami"])
+    svc.grant_roles(reviewer2, [ROLE_REVIEWER_CLINICAL], actor=users["umiami"])
 
     # 1. Miami publishes a root model; Maryland and the VA certify it.
     root = svc.submit(
@@ -156,6 +169,9 @@ def seed_demo(svc: HubServices) -> Dict[str, Any]:
         "attestation_mode": svc.settings.attestation_mode,
         "approved_measurement": measured.measurement,
         "password_for_all_demo_users": DEMO_PASSWORD,
+        "totp_secrets": totp_secrets,
+        "totp_note": "privileged demo users have two-factor enabled; add the secret to an authenticator app or run `openmed totp <secret>`",
+        "invite_codes": {slug: i.invite_code for slug, i in institutions.items()},
         "users": {slug: u.email for slug, u in users.items()},
         "admin": users["umiami"].email,
         "root_model": {"bundle_id": root.bundle_id, "state": root.state, "identifier": root.identifier},

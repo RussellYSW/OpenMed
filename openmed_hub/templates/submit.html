@@ -15,7 +15,7 @@ openmed submit --name … --version … --weights model.npz --card card.json    
 </div>
 <details><summary>Show the form anyway (fails without a quote; kept for hubs in mock mode)</summary>
 {% endif %}
-<form method="post" action="/submit" enctype="multipart/form-data" class="card">
+<form method="post" action="/submit" enctype="multipart/form-data" class="card"><input type="hidden" name="csrf" value="{{ csrf_token }}">
   <div class="row">
     <label>Model name <input name="name" required placeholder="cognitive-decline-risk"></label>
     <label>Version <input name="version" required placeholder="1.0.0"></label>

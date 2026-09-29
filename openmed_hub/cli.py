@@ -183,7 +183,12 @@ def cmd_login(args: argparse.Namespace) -> None:
     else:
         password = args.password or getpass.getpass("password: ")
         with _client(argparse.Namespace(hub=cfg["hub"], token=None)) as client:
-            body = _check(client.post("/auth/login", json={"email": args.email, "password": password}))
+            payload = {"email": args.email, "password": password, "totp": args.totp}
+            response = client.post("/auth/login", json=payload)
+            if response.status_code == 401 and response.json().get("error") == "totp_required":
+                payload["totp"] = input("two-factor code: ").strip()
+                response = client.post("/auth/login", json=payload)
+            body = _check(response)
         cfg["token"] = body["token"]
     _save_config(cfg)
     with _client(argparse.Namespace(hub=cfg["hub"], token=cfg["token"])) as client:
@@ -210,6 +215,29 @@ def cmd_register(args: argparse.Namespace) -> None:
     cfg.update(hub=args.hub, token=body["token"], institution=body["institution"]["slug"])
     _save_config(cfg)
     print(f"registered {body['institution']['slug']}; signed in as {body['user']['email']}")
+
+
+def cmd_join(args: argparse.Namespace) -> None:
+    password = args.password or getpass.getpass("password: ")
+    with _client(argparse.Namespace(hub=args.hub, token=None)) as client:
+        body = _check(client.post("/auth/join", json={
+            "institution_slug": args.institution, "email": args.email, "name": args.name or "",
+            "password": password, "invite_code": args.invite_code,
+        }))
+    if body.get("token"):
+        cfg = _load_config()
+        cfg.update(hub=args.hub, token=body["token"], institution=body["user"]["institution"])
+        _save_config(cfg)
+        print(f"joined {body['user']['institution']}; signed in as {body['user']['email']}")
+    else:
+        print(f"account created; membership of {body['user']['institution']} is {body['user']['membership']} until an institution admin approves it")
+
+
+def cmd_totp(args: argparse.Namespace) -> None:
+    """Print the current code for a TOTP secret (demo and test helper)."""
+    from openmed_hub.totp import totp
+
+    print(totp(args.secret))
 
 
 def cmd_whoami(args: argparse.Namespace) -> None:
@@ -459,7 +487,21 @@ def build_parser() -> argparse.ArgumentParser:
     hub_args(p)
     p.add_argument("--email")
     p.add_argument("--password")
+    p.add_argument("--totp", help="current two-factor code (prompted if needed)")
     p.set_defaults(func=cmd_login)
+
+    p = sub.add_parser("join", help="create an account in an existing institution")
+    p.add_argument("--hub", required=True)
+    p.add_argument("--institution", required=True, help="institution slug")
+    p.add_argument("--email", required=True)
+    p.add_argument("--name")
+    p.add_argument("--password")
+    p.add_argument("--invite-code")
+    p.set_defaults(func=cmd_join)
+
+    p = sub.add_parser("totp", help="print the current code for a TOTP secret (demo helper)")
+    p.add_argument("secret")
+    p.set_defaults(func=cmd_totp)
 
     p = sub.add_parser("register", help="register a new institution and its first user")
     p.add_argument("--hub", required=True)

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hub — OpenMed</title>
+<meta name="description" content="The OpenMed Hub: the running commons around the trustfed library — registration, node handshake, attested model upload, automated gate, multi-institution certification, reciprocity, and how accounts are secured.">
+<link rel="stylesheet" href="assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231c5d99'/><path d='M9 20.5 16 8l7 12.5H9Z' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="inner">
+    <a class="brand" href="index.html">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="7" fill="#1c5d99"/>
+        <path d="M9 20.5 16 8l7 12.5H9Z" fill="none" stroke="white" stroke-width="2.4" stroke-linejoin="round"/>
+      </svg>
+      OpenMed
+    </a>
+    <nav class="nav">
+      <a href="index.html">Overview</a>
+      <a href="quickstart.html">Quickstart</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="hub.html" class="active">Hub</a>
+      <a href="governance.html">Governance</a>
+      <a href="community.html">Community</a>
+      <a class="gh" href="https://github.com/RussellYSW/OpenMed">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <h1>The Hub: the commons as a running service</h1>
+    <p class="lede">
+      The <code>trustfed</code> library gives you the six components as Python objects. The Hub is
+      what makes them a commons that institutions you have never met can join: accounts and
+      nodes, attested uploads, an automated gate, a review board that cannot certify its own
+      models, reciprocal evaluations, and a tamper-evident record of all of it.
+    </p>
+    <div class="hero-actions">
+      <a class="btn primary" href="#run">Run it</a>
+      <a class="btn" href="#security">Account security</a>
+      <a class="btn" href="https://github.com/RussellYSW/OpenMed/blob/main/docs/HUB.md">Full reference (HUB.md)</a>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+<div class="layout">
+
+  <aside class="sidebar">
+    <h4>Hub</h4>
+    <ul>
+      <li><a href="#workflow">The workflow</a></li>
+      <li><a href="#run">Run it</a></li>
+      <li><a href="#attestation">Attestation without hardware</a></li>
+      <li><a href="#security">Account security</a></li>
+      <li><a href="#boundaries">What is and is not enforced</a></li>
+    </ul>
+    <h4>Documentation</h4>
+    <ul>
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="quickstart.html">Quickstart</a></li>
+      <li><a href="architecture.html">Architecture</a></li>
+      <li><a href="governance.html">Governance</a></li>
+      <li><a href="community.html">Community</a></li>
+    </ul>
+  </aside>
+
+  <main class="content">
+
+    <h2 id="workflow">The workflow</h2>
+    <p>A model arrives untrusted from one hospital and leaves as a certified base model. Step by step:</p>
+    <ol>
+      <li><strong>Register</strong> an institution; its first account is the institution's admin. Colleagues join with an invite code, an approved email domain, or after an admin approves them.</li>
+      <li><strong>Stand up a node</strong>: generate an Ed25519 key, post the public half, sign the challenge. A site that completed this is an <em>independent installation</em> in the metrics.</li>
+      <li><strong>Submit a bundle</strong> — weights, a Mitchell-style model card, an evaluation report, an optional clinician-readable fine-tuning manual, and the parent it was derived from — with a quote the site signed over a measurement of the code that ran.</li>
+      <li><strong>Automated gate</strong>: seven checks (card completeness, metadata, lineage attestation, metrics, subgroup gaps, membership-inference leakage, parameter norm). A failing check blocks the case with the reason on the decision log.</li>
+      <li><strong>Review board</strong>: reviewers from <em>other</em> institutions sign approve / reject / block. A reviewer from the owning institution is refused. Certification needs k approvals from distinct institutions, including the technical and clinical composition the charter sets.</li>
+      <li><strong>Certified base</strong>: the release gets a citable identifier naming every contributor and reviewer. Anyone registered may download it and fine-tune it; derived models link to their parent, so lineage verifies back to the root.</li>
+      <li><strong>Reciprocity</strong>: to receive a multi-site evaluation, a site serves as evaluator for others. Only acknowledgements signed by the counterparty count.</li>
+    </ol>
+
+    <h2 id="run">Run it</h2>
+    <pre><code>pip install -e ".[hub,dev]"
+openmed init --data-dir ./openmed-data --institution "University of Miami" --email admin@example.org
+openmed serve --data-dir ./openmed-data --port 8000</code></pre>
+    <p>Open <code>http://127.0.0.1:8000</code>; the JSON API is documented at <code>/docs</code>. To see every workflow populated with synthetic data, <code>openmed seed-demo --data-dir ./demo-data</code> first. From a site:</p>
+    <pre><code>openmed register --hub https://hub.example.org --institution "Somewhere Medical Center" --email you@somewhere.org
+openmed node keygen &amp;&amp; openmed node register
+openmed measure --script train.py           # the digest a maintainer approves
+openmed submit --name decline-risk --version 1.0.0 --weights model.npz \
+               --card card.json --evaluation eval.json --manual manual.json --script train.py</code></pre>
+
+    <h2 id="attestation">Attestation without hardware</h2>
+    <p>
+      A hardware TEE measures the loaded code and signs the digest with a key the host cannot
+      reach. Without hardware, the Hub does the next best thing, and says so. In the default
+      <code>nodekey</code> mode, <code>openmed submit</code> measures the installed package, the
+      training script and any extra files, requests a single-use challenge, and signs
+      measurement + config hash + nonce with the node key that completed the handshake. The Hub
+      holds only the public key, checks the signature, the freshness, the challenge binding, and
+      that the measurement is on the allow-list maintainers publish.
+    </p>
+    <div class="grid">
+      <div class="card">
+        <h3>What it proves</h3>
+        <p>The holder of that site's key vouched for this code digest, now, for this challenge. The Hub cannot forge it; a patched pipeline measures differently and is refused.</p>
+      </div>
+      <div class="card">
+        <h3>What it cannot prove</h3>
+        <p>Anything about a site whose operator lies: the operator holds the key. That residual risk is what Byzantine-resilient merging and multi-site evaluation are for.</p>
+      </div>
+      <div class="card">
+        <h3>Upgrading later</h3>
+        <p>A TEE backend replaces the node key with a hardware root of trust behind the same <code>Attestor</code> interface. Nothing else in the Hub changes.</p>
+      </div>
+    </div>
+
+    <h2 id="security">Account security</h2>
+    <p>The Hub decides who may act for an institution, so its accounts are guarded accordingly.</p>
+    <ul>
+      <li><strong>Passwords</strong>: PBKDF2-HMAC-SHA256 with a per-user salt; at least ten characters, not your email or name, not a common password.</li>
+      <li><strong>Two-factor authentication</strong>: TOTP (RFC 6238) with any authenticator app, plus ten single-use recovery codes. It is <em>required</em> for reviewers, maintainers and admins: signing a review, granting a role or approving a pipeline measurement is refused until it is enabled.</li>
+      <li><strong>Sessions</strong>: HttpOnly, SameSite=Lax cookies (Secure behind HTTPS), signed with the server secret and bound to a per-user security stamp. Changing the password or the second factor rotates the stamp and signs every other session out.</li>
+      <li><strong>Throttling</strong>: per-address rate limit on sign-in, and an account lock that doubles after each failure past the threshold, capped at fifteen minutes.</li>
+      <li><strong>CSRF</strong>: every HTML form carries a double-submit token that a cross-site page cannot read.</li>
+      <li><strong>Membership</strong>: joining an institution needs its invite code, an email in a domain it approved, or an institution admin's approval. Until then the account can look but not act, so a stranger cannot remediate, appeal, download or evaluate in an institution's name.</li>
+      <li><strong>API tokens</strong>: 256-bit random, stored only as SHA-256 hashes, revocable on the account page.</li>
+      <li><strong>Headers</strong>: Content-Security-Policy, X-Frame-Options, nosniff, Referrer-Policy, and HSTS behind HTTPS.</li>
+      <li><strong>Audit log</strong>: sign-ins and failures, lockouts, second-factor changes, token and role changes, member approvals, measurement approvals and node verifications, with the client address; visible to admins.</li>
+    </ul>
+    <p>Not yet: email verification and self-service password reset (both need an outgoing mail service; an institution admin re-enables an account today), hardware security keys (WebAuthn), and single sign-on. Put the Hub behind TLS; it does not terminate it itself.</p>
+
+    <h2 id="boundaries">What is and is not enforced</h2>
+    <ul>
+      <li>Reviews signed through the web form use a key the Hub holds for the reviewer; the record says so. A reviewer who registers a client-held key signs locally and the Hub only verifies, so it cannot mint that reviewer's approval.</li>
+      <li>Evaluation acknowledgements are signed with a per-institution service key the Hub holds, on the requester's explicit action.</li>
+      <li>Dispute actions are recorded with the acting account and <code>actor_authenticated: false</code> on the ledger: the session was authenticated, the ledger entry itself carries no signature.</li>
+      <li>Every publish, review, dispute, certification and credit event is on one of three hash-chained ledgers; <code>/api/v1/ledgers/verify</code> checks them.</li>
+    </ul>
+
+  </main>
+</div>
+</div>
+
+<footer class="site-footer">
+  <div class="inner">
+    <div>OpenMed — Apache-2.0. No patient data is distributed with this project.</div>
+    <div>
+      <a href="https://github.com/RussellYSW/OpenMed">GitHub</a> ·
+      <a href="https://github.com/RussellYSW/OpenMed/blob/main/SECURITY.md">Security</a> ·
+      <a href="https://github.com/RussellYSW/OpenMed/blob/main/CODE_OF_CONDUCT.md">Code of conduct</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

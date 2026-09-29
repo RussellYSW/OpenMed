@@ -68,6 +68,19 @@ class HubSettings:
     session_ttl_seconds: int = 14 * 24 * 3600
     hub_name: str = "OpenMed Hub"
     hub_url: str = "http://127.0.0.1:8000"
+    #: Roles that must have two-factor authentication enabled before they can
+    #: act in that role (sign reviews, grant roles, approve measurements, ...).
+    require_2fa_roles: Tuple[str, ...] = ("admin", "maintainer", "reviewer_technical", "reviewer_clinical")
+    #: Login throttling: lock after this many consecutive failures, for a
+    #: growing delay capped at ``lockout_max_seconds``.
+    lockout_threshold: int = 5
+    lockout_max_seconds: int = 900
+    #: Per-IP login attempts allowed per ten minutes.
+    login_rate_limit: int = 60
+    #: Mark cookies Secure (set automatically when ``hub_url`` is https).
+    secure_cookies: bool = False
+    #: Read the client address from X-Forwarded-For (only behind a proxy you control).
+    trust_proxy_headers: bool = False
 
     @classmethod
     def from_env(cls, data_dir: Optional[os.PathLike] = None) -> "HubSettings":
@@ -84,6 +97,7 @@ class HubSettings:
         identities = tuple(x.strip() for x in raw_ids.split(",") if x.strip())
         raw_measurements = os.environ.get("OPENMED_APPROVED_MEASUREMENTS", "")
         measurements = tuple(x.strip().lower() for x in raw_measurements.split(",") if x.strip())
+        hub_url = os.environ.get("OPENMED_HUB_URL", "http://127.0.0.1:8000")
         mode = os.environ.get("OPENMED_ATTESTATION_MODE", "nodekey").strip().lower()
         if mode not in ("nodekey", "mock"):
             raise ValueError("OPENMED_ATTESTATION_MODE must be 'nodekey' or 'mock'")
@@ -102,7 +116,18 @@ class HubSettings:
             reciprocity_grace_requests=_env_int("OPENMED_RECIPROCITY_GRACE", 1),
             max_upload_bytes=_env_int("OPENMED_MAX_UPLOAD_BYTES", 512 * 1024 * 1024),
             hub_name=os.environ.get("OPENMED_HUB_NAME", "OpenMed Hub"),
-            hub_url=os.environ.get("OPENMED_HUB_URL", "http://127.0.0.1:8000"),
+            hub_url=hub_url,
+            require_2fa_roles=tuple(
+                r.strip() for r in os.environ.get(
+                    "OPENMED_REQUIRE_2FA_ROLES", "admin,maintainer,reviewer_technical,reviewer_clinical"
+                ).split(",") if r.strip()
+            ),
+            lockout_threshold=_env_int("OPENMED_LOCKOUT_THRESHOLD", 5),
+            lockout_max_seconds=_env_int("OPENMED_LOCKOUT_MAX_SECONDS", 900),
+            login_rate_limit=_env_int("OPENMED_LOGIN_RATE_LIMIT", 60),
+            secure_cookies=os.environ.get("OPENMED_SECURE_COOKIES", "").lower() in ("1", "true", "yes")
+            or hub_url.lower().startswith("https://"),
+            trust_proxy_headers=os.environ.get("OPENMED_TRUST_PROXY", "").lower() in ("1", "true", "yes"),
         )
 
     @property

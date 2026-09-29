@@ -24,6 +24,7 @@ def _settings(tmp_path, mode="mock"):
         secret_key="test-secret",
         attestation_root_key=b"test-attestation-root",
         attestation_mode=mode,
+        require_2fa_roles=(),  # two-factor policy is covered in test_hub_security.py
         technical_reviewers_min=1,
         clinical_reviewers_min=1,
         reciprocity_min_evaluations_served=2,
@@ -324,8 +325,10 @@ def test_web_pages_render(client):
         r = client.get(path)
         assert r.status_code == 200, (path, r.status_code)
         assert "OpenMed" in r.text
-    # Session login through the form, then a page that needs a user.
-    r = client.post("/login", data={"email": "lead@web-a.test", "password": PASSWORD, "next": "/account"}, follow_redirects=False)
+    # Session login through the form (with its CSRF token), then a page that needs a user.
+    client.get("/login")
+    csrf = client.cookies.get("openmed_csrf")
+    r = client.post("/login", data={"email": "lead@web-a.test", "password": PASSWORD, "next": "/account", "csrf": csrf}, follow_redirects=False)
     assert r.status_code == 303
     assert "openmed_session" in r.headers.get("set-cookie", "")
     r = client.get("/account")

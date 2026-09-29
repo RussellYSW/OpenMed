@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from openmed_hub.api import hub_error_response, router as api_router
 from openmed_hub.config import HubSettings
-from openmed_hub.db import Base, make_engine, make_session_factory
+from openmed_hub.db import Base, ensure_columns, make_engine, make_session_factory
 from openmed_hub.services import HubError
 from openmed_hub.trustplane import TrustPlane
 from openmed_hub.web import router as web_router
@@ -24,6 +24,7 @@ def create_app(settings: Optional[HubSettings] = None) -> FastAPI:
     settings = settings or HubSettings.from_env()
     engine = make_engine(settings.db_path)
     Base.metadata.create_all(engine)
+    ensure_columns(engine)
     session_factory = make_session_factory(engine)
 
     trustplane = TrustPlane(settings)
@@ -49,6 +50,24 @@ def create_app(settings: Optional[HubSettings] = None) -> FastAPI:
         back = request.headers.get("referer") or "/"
         sep = "&" if "?" in back else "?"
         return RedirectResponse(url=f"{back}{sep}error={exc.detail}", status_code=303)
+
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):
+        response = await call_next(request)
+        headers = response.headers
+        headers.setdefault("X-Content-Type-Options", "nosniff")
+        headers.setdefault("X-Frame-Options", "DENY")
+        headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if not request.url.path.startswith(("/docs", "/redoc", "/openapi.json")):
+            headers.setdefault(
+                "Content-Security-Policy",
+                "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+                "script-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'self'",
+            )
+        if settings.secure_cookies:
+            headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
 
     app.include_router(api_router)
     app.include_router(web_router)

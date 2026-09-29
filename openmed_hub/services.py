@@ -11,7 +11,10 @@ from __future__ import annotations
 
 import io
 import json
+import re
 import secrets
+import threading
+from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
@@ -61,8 +64,12 @@ from openmed_hub.db import (
     ROLE_MAINTAINER,
     ROLE_REVIEWER_CLINICAL,
     ROLE_REVIEWER_TECHNICAL,
+    MEMBERSHIP_ACTIVE,
+    MEMBERSHIP_PENDING,
+    MEMBERSHIP_REJECTED,
     ApiToken,
     ApprovedMeasurement,
+    AuditEvent,
     Download,
     EvaluationTask,
     Institution,
@@ -72,10 +79,33 @@ from openmed_hub.db import (
     User,
     utcnow,
 )
-from openmed_hub.security import hash_password, new_token, token_hash, verify_password
+from openmed_hub.security import (
+    hash_password,
+    new_stamp,
+    new_token,
+    password_problem,
+    token_hash,
+    verify_password,
+)
+from openmed_hub.totp import (
+    consume_recovery,
+    hash_recovery,
+    new_recovery_codes,
+    new_secret,
+    otpauth_uri,
+    qr_svg,
+    verify_totp,
+)
 from openmed_hub.trustplane import TrustPlane, verifier_from_public_hex
 
 GATE_ACTOR = "hub:automated-gate"
+#: Model names and versions end up in file names, URLs and citations.
+NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+# Per-IP login attempts within a sliding ten-minute window (process-local).
+_LOGIN_WINDOW_SECONDS = 600
+_login_attempts: "Dict[str, deque]" = defaultdict(deque)
+_login_lock = threading.Lock()
 HUB_ACTOR = "hub"
 WEIGHT_FORMATS = ("npz", "npy", "pt", "pth", "onnx", "pkl", "bin", "safetensors", "other")
 
@@ -131,10 +161,52 @@ def load_weights_array(blob: bytes, fmt: str) -> Optional[np.ndarray]:
 class HubServices:
     """All hub operations, bound to one DB session and the shared trust plane."""
 
-    def __init__(self, trustplane: TrustPlane, settings: HubSettings, db: Session) -> None:
+    def __init__(self, trustplane: TrustPlane, settings: HubSettings, db: Session, *, client_ip: str = "") -> None:
         self.tp = trustplane
         self.settings = settings
         self.db = db
+        self.client_ip = client_ip
+
+    # ================================================================== audit
+
+    def audit(self, action: str, *, actor: Optional[User] = None, subject: str = "", detail: str = "") -> None:
+        """Record a security-relevant event; never raises."""
+        self.db.add(
+            AuditEvent(
+                action=action,
+                actor_email=actor.email if actor else "",
+                actor_id=actor.id if actor else None,
+                subject=subject[:200],
+                ip=self.client_ip[:64],
+                detail=detail[:2000],
+            )
+        )
+        self.db.commit()
+
+    def audit_log(self, *, limit: int = 200) -> List[AuditEvent]:
+        return list(self.db.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(limit)))
+
+    # ========================================================= policy checks
+
+    def require_member(self, user: User) -> None:
+        """Only approved members of an institution act on its behalf."""
+        if not user.membership_active:
+            raise HubError(
+                403,
+                "membership_pending",
+                "your membership of this institution has not been approved yet; ask an institution "
+                "admin to approve it (or join with the institution's invite code)",
+            )
+
+    def require_second_factor(self, user: User) -> None:
+        """Privileged roles must have two-factor authentication enabled."""
+        needed = [r for r in user.role_list if r in self.settings.require_2fa_roles]
+        if needed and not user.totp_enabled:
+            raise HubError(
+                403,
+                "totp_required",
+                f"the {', '.join(needed)} role(s) require two-factor authentication; enable it under /account first",
+            )
 
     # ================================================================ accounts
 
@@ -165,6 +237,7 @@ class HubServices:
             country=country.strip() or "US",
             is_founding=is_founding,
             service_key_seed=secrets.token_hex(32),
+            invite_code=_new_invite_code(),
         )
         self.db.add(institution)
         self.db.flush()
@@ -179,7 +252,9 @@ class HubServices:
             institution=institution,
             roles=(ROLE_CONTRIBUTOR, ROLE_ADMIN, ROLE_MAINTAINER) if first_account else (ROLE_CONTRIBUTOR,),
         )
+        user.is_institution_admin = True
         self.db.commit()
+        self.audit("institution_registered", actor=user, subject=institution.slug)
         return institution, user
 
     def register_user(
@@ -190,37 +265,236 @@ class HubServices:
         password: str,
         institution: Institution,
         roles: Sequence[str] = (ROLE_CONTRIBUTOR,),
+        invite_code: Optional[str] = None,
     ) -> User:
+        """Create an account. Membership is active only when the joiner proves
+        a link to the institution (invite code or allowed email domain) or is
+        its first member; otherwise it waits for an institution admin."""
         email = email.strip().lower()
-        if "@" not in email:
+        if "@" not in email or email.count("@") != 1:
             raise HubError(422, "invalid_email", "a valid email is required")
-        if len(password) < 8:
-            raise HubError(422, "weak_password", "password must be at least 8 characters")
+        problem = password_problem(password, email=email, name=name)
+        if problem:
+            raise HubError(422, "weak_password", problem)
         if self.db.scalar(select(User).where(User.email == email)):
             raise HubError(409, "user_exists", f"{email} is already registered")
+        first_member = not institution.users
+        domain = email.rsplit("@", 1)[1]
+        code_ok = bool(invite_code) and bool(institution.invite_code) and secrets.compare_digest(
+            invite_code.strip().upper(), institution.invite_code.upper()
+        )
+        if invite_code and not code_ok:
+            raise HubError(403, "bad_invite_code", "that invite code does not match this institution")
+        status = MEMBERSHIP_ACTIVE if (first_member or code_ok or domain in institution.domain_list) else MEMBERSHIP_PENDING
         user = User(
             email=email,
             name=name.strip() or email,
             password_hash=hash_password(password),
             institution_id=institution.id,
             roles=",".join(dict.fromkeys(roles)),
+            security_stamp=new_stamp(),
+            membership_status=status,
+            is_institution_admin=first_member,
+            password_changed_at=utcnow(),
         )
         self.db.add(user)
         self.db.flush()
         user.institution = institution
         self.db.commit()
+        self.audit("user_registered", actor=user, subject=institution.slug, detail=f"membership={status}")
         return user
 
+    # ------------------------------------------------------------ membership
+
+    def approve_member(self, *, actor: User, member: User, approve: bool) -> User:
+        """An institution admin (or hub admin) decides a pending membership."""
+        self._require_institution_admin(actor, member.institution)
+        if member.id == actor.id:
+            raise HubError(400, "self_approval", "you cannot decide your own membership")
+        member.membership_status = MEMBERSHIP_ACTIVE if approve else MEMBERSHIP_REJECTED
+        member.is_active = bool(approve)
+        self.db.commit()
+        self.audit("member_approved" if approve else "member_rejected", actor=actor, subject=member.email)
+        return member
+
+    def set_institution_admin(self, *, actor: User, member: User, flag: bool) -> User:
+        self._require_institution_admin(actor, member.institution)
+        member.is_institution_admin = bool(flag)
+        self.db.commit()
+        self.audit("institution_admin_changed", actor=actor, subject=member.email, detail=str(flag))
+        return member
+
+    def update_institution_settings(
+        self, *, actor: User, institution: Institution, allowed_email_domains: Optional[str] = None,
+        rotate_invite_code: bool = False,
+    ) -> Institution:
+        self._require_institution_admin(actor, institution)
+        if allowed_email_domains is not None:
+            domains = [d.strip().lower().lstrip("@") for d in allowed_email_domains.split(",") if d.strip()]
+            for d in domains:
+                if "." not in d or "/" in d or " " in d:
+                    raise HubError(422, "invalid_domain", f"{d!r} is not a domain name")
+            institution.allowed_email_domains = ",".join(domains)
+        if rotate_invite_code:
+            institution.invite_code = _new_invite_code()
+        self.db.commit()
+        self.audit("institution_settings_changed", actor=actor, subject=institution.slug)
+        return institution
+
+    def _require_institution_admin(self, actor: User, institution: Institution) -> None:
+        if actor.is_admin:
+            return
+        if actor.institution_id != institution.id or not actor.institution_admin or not actor.membership_active:
+            raise HubError(403, "institution_admin_only", "only an admin of that institution may do this")
+
+    def members(self, institution: Institution) -> List[User]:
+        return sorted(institution.users, key=lambda u: (u.membership_status or MEMBERSHIP_ACTIVE, u.id))
+
+    def _rate_limit_login(self) -> None:
+        if not self.client_ip:
+            return
+        now = datetime.now().timestamp()
+        with _login_lock:
+            attempts = _login_attempts[self.client_ip]
+            while attempts and attempts[0] < now - _LOGIN_WINDOW_SECONDS:
+                attempts.popleft()
+            if len(attempts) >= self.settings.login_rate_limit:
+                raise HubError(429, "too_many_attempts", "too many sign-in attempts from this address; try again later")
+            attempts.append(now)
+
     def authenticate(self, email: str, password: str) -> User:
-        user = self.db.scalar(select(User).where(User.email == email.strip().lower()))
+        """First factor. Locks the account for a growing delay after repeated failures."""
+        self._rate_limit_login()
+        email = email.strip().lower()
+        user = self.db.scalar(select(User).where(User.email == email))
+        if user is not None and user.locked_until and user.locked_until > utcnow():
+            remaining = int((user.locked_until - utcnow()).total_seconds()) + 1
+            self.audit("login_locked", subject=email)
+            raise HubError(423, "account_locked", f"account temporarily locked after repeated failures; try again in {remaining}s")
         if user is None or not user.is_active or not verify_password(password, user.password_hash):
+            if user is not None:
+                self._register_failure(user)
+            self.audit("login_failed", subject=email)
             raise HubError(401, "bad_credentials", "email or password is incorrect")
         return user
 
+    def _register_failure(self, user: User) -> None:
+        user.failed_logins = (user.failed_logins or 0) + 1
+        over = user.failed_logins - self.settings.lockout_threshold
+        if over >= 0:
+            delay = min(30 * (2 ** over), self.settings.lockout_max_seconds)
+            user.locked_until = utcnow() + timedelta(seconds=delay)
+        self.db.commit()
+
+    def _clear_failures(self, user: User) -> None:
+        if user.failed_logins or user.locked_until:
+            user.failed_logins = 0
+            user.locked_until = None
+            self.db.commit()
+
+    def second_factor_ok(self, user: User, code: str) -> bool:
+        """Verify a TOTP code or consume a recovery code."""
+        if not user.totp_enabled:
+            return True
+        code = (code or "").strip()
+        if verify_totp(user.totp_secret or "", code):
+            return True
+        remaining = consume_recovery(code, json.loads(user.recovery_codes or "[]"))
+        if remaining is not None:
+            user.recovery_codes = json.dumps(remaining)
+            self.db.commit()
+            self.audit("recovery_code_used", actor=user, detail=f"{len(remaining)} left")
+            return True
+        return False
+
+    def login(self, email: str, password: str, totp: Optional[str] = None) -> User:
+        """Both factors in one call (the API path)."""
+        user = self.authenticate(email, password)
+        if user.totp_enabled:
+            if not totp:
+                raise HubError(401, "totp_required", "two-factor authentication is enabled; supply the current code as `totp`")
+            if not self.second_factor_ok(user, totp):
+                self._register_failure(user)
+                self.audit("login_failed", actor=user, detail="bad second factor")
+                raise HubError(401, "bad_totp", "the two-factor code is incorrect")
+        return self.complete_login(user)
+
+    def complete_login(self, user: User) -> User:
+        self._clear_failures(user)
+        self.audit("login_ok", actor=user)
+        return user
+
+    # ------------------------------------------------------------- 2FA
+
+    def start_totp_enrollment(self, user: User) -> Dict[str, Any]:
+        """Issue a secret; nothing is enforced until :meth:`confirm_totp`."""
+        if user.totp_enabled:
+            raise HubError(409, "totp_already_enabled", "two-factor authentication is already enabled; disable it first to re-enrol")
+        user.totp_secret = new_secret()
+        self.db.commit()
+        uri = otpauth_uri(user.totp_secret, user.email, self.settings.hub_name)
+        return {"secret": user.totp_secret, "otpauth_uri": uri, "qr_svg": qr_svg(uri)}
+
+    def confirm_totp(self, user: User, code: str) -> List[str]:
+        """Prove the authenticator works; returns the recovery codes, once."""
+        if user.totp_enabled:
+            raise HubError(409, "totp_already_enabled", "already enabled")
+        if not user.totp_secret or not verify_totp(user.totp_secret, code):
+            raise HubError(400, "bad_totp", "that code did not match; check the authenticator's clock and try the next code")
+        codes = new_recovery_codes()
+        user.recovery_codes = json.dumps([hash_recovery(c) for c in codes])
+        user.totp_enabled_at = utcnow()
+        user.security_stamp = new_stamp()  # other sessions must re-authenticate
+        self.db.commit()
+        self.audit("totp_enabled", actor=user)
+        return codes
+
+    def disable_totp(self, user: User, *, password: str, code: str) -> User:
+        if not verify_password(password, user.password_hash):
+            raise HubError(401, "bad_credentials", "password is incorrect")
+        if not self.second_factor_ok(user, code):
+            raise HubError(400, "bad_totp", "the two-factor or recovery code is incorrect")
+        user.totp_secret = None
+        user.totp_enabled_at = None
+        user.recovery_codes = None
+        user.security_stamp = new_stamp()
+        self.db.commit()
+        self.audit("totp_disabled", actor=user)
+        return user
+
+    def regenerate_recovery_codes(self, user: User, *, code: str) -> List[str]:
+        if not user.totp_enabled:
+            raise HubError(400, "totp_not_enabled", "enable two-factor authentication first")
+        if not verify_totp(user.totp_secret or "", code):
+            raise HubError(400, "bad_totp", "the two-factor code is incorrect")
+        codes = new_recovery_codes()
+        user.recovery_codes = json.dumps([hash_recovery(c) for c in codes])
+        self.db.commit()
+        self.audit("recovery_codes_regenerated", actor=user)
+        return codes
+
+    def change_password(self, user: User, *, current_password: str, new_password: str) -> User:
+        if not verify_password(current_password, user.password_hash):
+            raise HubError(401, "bad_credentials", "current password is incorrect")
+        problem = password_problem(new_password, email=user.email, name=user.name)
+        if problem:
+            raise HubError(422, "weak_password", problem)
+        user.password_hash = hash_password(new_password)
+        user.password_changed_at = utcnow()
+        user.security_stamp = new_stamp()  # every other session is signed out
+        self.db.commit()
+        self.audit("password_changed", actor=user)
+        return user
+
+    # ----------------------------------------------------------- tokens
+
     def create_token(self, user: User, label: str = "") -> str:
+        # Pending members may hold a token (to check their status); every
+        # action they attempt is refused by require_member().
         token = new_token()
         self.db.add(ApiToken(user_id=user.id, token_hash=token_hash(token), label=label[:100]))
         self.db.commit()
+        self.audit("token_created", actor=user, detail=label[:100])
         return token
 
     def revoke_token(self, user: User, token_id: int) -> None:
@@ -229,6 +503,7 @@ class HubServices:
             raise HubError(404, "token_not_found", "no such token")
         self.db.delete(row)
         self.db.commit()
+        self.audit("token_revoked", actor=user, detail=str(token_id))
 
     def institution_by_slug(self, slug: str) -> Institution:
         institution = self.db.scalar(select(Institution).where(Institution.slug == slug))
@@ -241,8 +516,10 @@ class HubServices:
 
     # -------------------------------------------------------------- roles/keys
 
-    def grant_roles(self, user: User, roles: Iterable[str]) -> User:
+    def grant_roles(self, user: User, roles: Iterable[str], *, actor: Optional[User] = None) -> User:
         """Set a user's roles; registers a reviewer identity when needed."""
+        if actor is not None:
+            self.require_second_factor(actor)
         roles = list(dict.fromkeys(r for r in roles if r))
         unknown = [r for r in roles if r not in ALL_ROLES]
         if unknown:
@@ -259,6 +536,7 @@ class HubServices:
         elif user.reviewer_id:
             self.tp.revoke_reviewer(user.reviewer_id)
         self.db.commit()
+        self.audit("roles_changed", actor=actor, subject=user.email, detail=",".join(roles))
         return user
 
     def set_reviewer_public_key(self, user: User, public_key_hex: str) -> User:
@@ -274,17 +552,23 @@ class HubServices:
         user.reviewer_key_seed = None
         self.tp.register_reviewer(user)
         self.db.commit()
+        self.audit("reviewer_key_changed", actor=user, detail="client-held")
         return user
 
-    def set_founding(self, institution: Institution, is_founding: bool) -> Institution:
+    def set_founding(self, institution: Institution, is_founding: bool, *, actor: Optional[User] = None) -> Institution:
+        if actor is not None:
+            self.require_second_factor(actor)
         institution.is_founding = bool(is_founding)
         self.db.commit()
+        self.audit("founding_changed", actor=actor, subject=institution.slug, detail=str(bool(is_founding)))
         return institution
 
     # ------------------------------------------------------------- node keys
 
-    def begin_node_registration(self, institution: Institution, public_key_hex: str) -> str:
+    def begin_node_registration(self, institution: Institution, public_key_hex: str, *, actor: Optional[User] = None) -> str:
         """Store the node's public key and issue a challenge nonce."""
+        if actor is not None:
+            self.require_member(actor)
         public_key_hex = public_key_hex.strip().lower()
         try:
             verifier_from_public_hex(public_key_hex)
@@ -322,6 +606,7 @@ class HubServices:
         institution.node_verified_at = utcnow()
         self.db.commit()
         self.tp.register_node_key(institution)
+        self.audit("node_verified", subject=institution.slug, detail=institution.node_public_key or "")
         return institution
 
     # ============================================================ submissions
@@ -352,11 +637,12 @@ class HubServices:
         (see ``openmed submit``). In ``mock`` mode the hub signs the declared
         ``code_identity`` itself, which is a demo convenience only.
         """
+        self.require_member(user)
         institution = user.institution
         name = name.strip()
         version = version.strip()
-        if not name or not version:
-            raise HubError(422, "missing_fields", "name and version are required")
+        if not NAME_RE.match(name) or not NAME_RE.match(version):
+            raise HubError(422, "invalid_name", "name and version may only contain letters, digits, '.', '_' and '-' (max 64)")
         if not weights:
             raise HubError(422, "missing_weights", "a weights file is required")
         if len(weights) > self.settings.max_upload_bytes:
@@ -572,6 +858,7 @@ class HubServices:
         """Maintainers publish the digest of an approved pipeline release."""
         if not user.is_maintainer:
             raise HubError(403, "maintainer_only", "only maintainers approve pipeline measurements")
+        self.require_second_factor(user)
         measurement = measurement.strip().lower()
         if len(measurement) != 64 or any(c not in "0123456789abcdef" for c in measurement):
             raise HubError(422, "invalid_measurement", "a measurement is a 64-hex-character SHA-256 digest")
@@ -585,21 +872,25 @@ class HubServices:
         row.added_at = utcnow()
         self.db.commit()
         self.tp.approve_measurement(measurement)
+        self.audit("measurement_approved", actor=user, subject=measurement, detail=label[:200])
         return row
 
     def revoke_measurement(self, *, user: User, measurement: str) -> ApprovedMeasurement:
         if not user.is_maintainer:
             raise HubError(403, "maintainer_only", "only maintainers revoke pipeline measurements")
+        self.require_second_factor(user)
         row = self.db.scalar(select(ApprovedMeasurement).where(ApprovedMeasurement.measurement == measurement.strip().lower()))
         if row is None:
             raise HubError(404, "measurement_not_found", "no such approved measurement")
         row.revoked_at = utcnow()
         self.db.commit()
         self.tp.revoke_measurement(row.measurement)
+        self.audit("measurement_revoked", actor=user, subject=row.measurement)
         return row
 
     def issue_challenge(self, user: User) -> Dict[str, Any]:
         """A nonce the site's node must sign into its next quote."""
+        self.require_member(user)
         if not user.institution.node_verified:
             raise HubError(403, "node_not_verified", "complete the node verification handshake first")
         with self.tp.lock:
@@ -720,6 +1011,8 @@ class HubServices:
         """Sign a review on the web path (hub-held key) and record it."""
         if not user.is_reviewer or not user.reviewer_id:
             raise HubError(403, "not_a_reviewer", "only registered reviewers may sign")
+        self.require_member(user)
+        self.require_second_factor(user)
         if user.reviewer_public_key:
             raise HubError(
                 400,
@@ -754,6 +1047,7 @@ class HubServices:
         user = self.db.scalar(select(User).where(User.reviewer_id == signature.reviewer_id))
         if user is None:
             raise HubError(404, "unknown_reviewer", f"no reviewer {signature.reviewer_id!r}")
+        self.require_member(user)
         with self.tp.lock:
             try:
                 accepted = self.tp.authority.submit_signature(signature)
@@ -898,6 +1192,7 @@ class HubServices:
     # --------------------------------------------------------------- disputes
 
     def dispute(self, *, submission: Submission, user: User, reason: str) -> Submission:
+        self.require_member(user)
         if not reason.strip():
             raise HubError(422, "missing_reason", "a reason is required")
         with self.tp.lock:
@@ -931,6 +1226,7 @@ class HubServices:
     def resolve_appeal(self, *, submission: Submission, user: User, upheld: bool, note: str) -> Submission:
         if not user.is_admin:
             raise HubError(403, "board_only", "only the advisory board (admin) resolves appeals")
+        self.require_second_factor(user)
         with self.tp.lock:
             try:
                 self.tp.authority.resolve_appeal(
@@ -944,6 +1240,7 @@ class HubServices:
     def revoke(self, *, submission: Submission, user: User, reason: str) -> Submission:
         if not user.is_maintainer:
             raise HubError(403, "maintainer_only", "only maintainers revoke a certification")
+        self.require_second_factor(user)
         with self.tp.lock:
             try:
                 self.tp.authority.revoke(submission.bundle_id, actor=user.email, reason=reason.strip())
@@ -953,6 +1250,7 @@ class HubServices:
         return submission
 
     def _require_owner(self, submission: Submission, user: User) -> None:
+        self.require_member(user)
         if user.institution_id != submission.institution_id and not user.is_admin:
             raise HubError(403, "not_owner", "only the submitting institution may do that")
 
@@ -960,6 +1258,7 @@ class HubServices:
 
     def download(self, *, submission: Submission, user: User):
         """Return the weights path after recording the (registered) download."""
+        self.require_member(user)
         path = self.tp.blobs.path(submission.weights_sha256)
         if not path.exists():
             raise HubError(410, "weights_missing", "weights blob is missing from the store")
@@ -975,6 +1274,7 @@ class HubServices:
         self, *, user: User, bundle_id: str, evaluator_slug: str, detail: str = ""
     ) -> EvaluationTask:
         """Ask another site to evaluate a bundle, under the reciprocity rule."""
+        self.require_member(user)
         submission = self.get_submission(bundle_id)
         requester = user.institution
         if submission.institution_id != requester.id:
@@ -1007,6 +1307,7 @@ class HubServices:
 
     def serve_evaluation(self, *, task: EvaluationTask, user: User, report: Any) -> EvaluationTask:
         """The evaluator records the metrics it measured on its own cohort."""
+        self.require_member(user)
         if user.institution_id != task.evaluator_institution_id:
             raise HubError(403, "not_evaluator", "only the evaluating institution may serve this task")
         if task.state != "requested":
@@ -1035,6 +1336,7 @@ class HubServices:
 
     def acknowledge_evaluation(self, *, task: EvaluationTask, user: User) -> EvaluationTask:
         """The requester signs that the service happened; credit becomes attested."""
+        self.require_member(user)
         if user.institution_id != task.requester_institution_id:
             raise HubError(403, "not_requester", "only the requesting institution may acknowledge")
         if task.state != "served":
@@ -1207,6 +1509,11 @@ class HubServices:
             "rows": [row.to_dict() for row in report.rows],
             "markdown": report.to_markdown(),
         }
+
+
+def _new_invite_code() -> str:
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(10))
 
 
 def gate_verdict(report: Any) -> str:

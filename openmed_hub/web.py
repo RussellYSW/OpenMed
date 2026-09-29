@@ -13,12 +13,36 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
 from openmed_hub.db import ALL_ROLES, INSTITUTION_KINDS, ApiToken, Institution, User
-from openmed_hub.deps import get_services, optional_user
-from openmed_hub.security import SESSION_COOKIE, make_session
+from openmed_hub.deps import get_db, get_services, optional_user
+from openmed_hub.security import (
+    CSRF_COOKIE,
+    PREAUTH_COOKIE,
+    SESSION_COOKIE,
+    csrf_matches,
+    make_session,
+    new_csrf_token,
+    read_session,
+)
 from openmed_hub.services import HubError, HubServices
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
-router = APIRouter(include_in_schema=False)
+
+
+async def verify_csrf(request: Request) -> None:
+    """Double-submit CSRF check for every HTML form post.
+
+    The token lives in a cookie and must be echoed in the form; a cross-site
+    page cannot read the cookie to forge the field. (Session cookies are also
+    SameSite=Lax, so this is the second layer, not the only one.)
+    """
+    if request.method != "POST":
+        return
+    form = await request.form()
+    if not csrf_matches(request.cookies.get(CSRF_COOKIE), form.get("csrf")):
+        raise HubError(403, "csrf", "the form token is missing or stale; reload the page and try again")
+
+
+router = APIRouter(include_in_schema=False, dependencies=[Depends(verify_csrf)])
 
 EXAMPLE_CARD: Dict[str, Any] = {
     "model_details": {
@@ -80,14 +104,19 @@ EXAMPLE_MANUAL: Dict[str, Any] = {
 
 def render(request: Request, name: str, user: Optional[User], **context: Any) -> HTMLResponse:
     settings = request.app.state.settings
+    csrf_token = request.cookies.get(CSRF_COOKIE) or new_csrf_token()
     context.update(
         request=request,
         user=user,
         settings=settings,
+        csrf_token=csrf_token,
         error=request.query_params.get("error"),
         message=request.query_params.get("message"),
     )
-    return TEMPLATES.TemplateResponse(request, name, context)
+    response = TEMPLATES.TemplateResponse(request, name, context)
+    if request.cookies.get(CSRF_COOKIE) != csrf_token:
+        response.set_cookie(CSRF_COOKIE, csrf_token, samesite="lax", secure=settings.secure_cookies, max_age=7 * 86400)
+    return response
 
 
 def _redirect(url: str, message: Optional[str] = None, error: Optional[str] = None) -> RedirectResponse:
@@ -133,7 +162,8 @@ def register_submit(
         name=name, slug=slug or None, kind=kind, country=country,
         admin_email=email, admin_name=user_name, admin_password=password,
     )
-    response = _redirect("/account", message="institution registered; next, register your node key")
+    svc.complete_login(user)
+    response = _redirect("/account", message="institution registered; next, enable two-factor authentication and register your node key")
     _set_session(request, response, user)
     return response
 
@@ -150,11 +180,18 @@ def join_submit(
     email: str = Form(...),
     user_name: str = Form(""),
     password: str = Form(...),
+    invite_code: str = Form(""),
     svc: HubServices = Depends(get_services),
 ):
     institution = svc.institution_by_slug(institution_slug)
-    user = svc.register_user(email=email, name=user_name, password=password, institution=institution)
-    response = _redirect("/account", message="account created")
+    user = svc.register_user(
+        email=email, name=user_name, password=password, institution=institution, invite_code=invite_code or None
+    )
+    svc.complete_login(user)
+    if user.membership_active:
+        response = _redirect("/account", message="account created")
+    else:
+        response = _redirect("/account", message="account created; an admin of your institution has to approve your membership before you can act for it")
     _set_session(request, response, user)
     return response
 
@@ -174,15 +211,57 @@ def login_submit(
 ):
     user = svc.authenticate(email, password)
     target = next if next.startswith("/") else "/"
+    settings = request.app.state.settings
+    if user.totp_enabled:
+        # Second step: a short-lived pre-auth cookie names the user; nothing
+        # else is granted until the code checks out.
+        response = _redirect("/login/2fa?next=" + quote(target))
+        response.set_cookie(
+            PREAUTH_COOKIE,
+            make_session(settings.secret_key, user.id, 300, user.stamp, purpose="preauth"),
+            httponly=True, samesite="lax", secure=settings.secure_cookies, max_age=300,
+        )
+        return response
+    svc.complete_login(user)
     response = _redirect(target, message=f"signed in as {user.email}")
     _set_session(request, response, user)
     return response
 
 
+@router.get("/login/2fa", response_class=HTMLResponse)
+def login_2fa_form(request: Request):
+    if _preauth_user_id(request) is None:
+        return _redirect("/login", error="sign in first")
+    return render(request, "login_2fa.html", None, next=request.query_params.get("next", "/"))
+
+
+@router.post("/login/2fa")
+def login_2fa_submit(request: Request, code: str = Form(...), next: str = Form("/"), svc: HubServices = Depends(get_services)):
+    user_id = _preauth_user_id(request)
+    user = svc.db.get(User, user_id) if user_id is not None else None
+    if user is None or not user.is_active:
+        return _redirect("/login", error="sign in first")
+    if not svc.second_factor_ok(user, code):
+        svc._register_failure(user)
+        svc.audit("login_failed", actor=user, detail="bad second factor")
+        return _redirect("/login/2fa?next=" + quote(next), error="that code did not match")
+    svc.complete_login(user)
+    response = _redirect(next if next.startswith("/") else "/", message=f"signed in as {user.email}")
+    response.delete_cookie(PREAUTH_COOKIE)
+    _set_session(request, response, user)
+    return response
+
+
+def _preauth_user_id(request: Request) -> Optional[int]:
+    parsed = read_session(request.app.state.settings.secret_key, request.cookies.get(PREAUTH_COOKIE), purpose="preauth")
+    return parsed[0] if parsed else None
+
+
 @router.post("/logout")
-def logout():
+def logout(request: Request):
     response = _redirect("/", message="signed out")
     response.delete_cookie(SESSION_COOKIE)
+    response.delete_cookie(PREAUTH_COOKIE)
     return response
 
 
@@ -190,9 +269,10 @@ def _set_session(request: Request, response: RedirectResponse, user: User) -> No
     settings = request.app.state.settings
     response.set_cookie(
         SESSION_COOKIE,
-        make_session(settings.secret_key, user.id, settings.session_ttl_seconds),
+        make_session(settings.secret_key, user.id, settings.session_ttl_seconds, user.stamp),
         httponly=True,
         samesite="lax",
+        secure=settings.secure_cookies,
         max_age=settings.session_ttl_seconds,
     )
 
@@ -386,7 +466,89 @@ def account(request: Request, user: Optional[User] = Depends(optional_user), svc
     if user is None:
         return _login_redirect(request)
     tokens = list(svc.db.scalars(select(ApiToken).where(ApiToken.user_id == user.id).order_by(ApiToken.created_at.desc())))
-    return render(request, "account.html", user, tokens=tokens, new_token=request.query_params.get("token"))
+    enrolling = None
+    if user.totp_secret and not user.totp_enabled:
+        from openmed_hub.totp import otpauth_uri, qr_svg
+
+        uri = otpauth_uri(user.totp_secret, user.email, svc.settings.hub_name)
+        enrolling = {"secret": user.totp_secret, "otpauth_uri": uri, "qr_svg": qr_svg(uri)}
+    needs_2fa = any(r in svc.settings.require_2fa_roles for r in user.role_list) and not user.totp_enabled
+    return render(
+        request, "account.html", user, tokens=tokens, new_token=request.query_params.get("token"),
+        enrolling=enrolling, needs_2fa=needs_2fa, recovery_codes=request.query_params.getlist("rc"),
+        members=svc.members(user.institution) if (user.institution_admin or user.is_admin) else [],
+    )
+
+
+@router.post("/account/2fa/enroll")
+def account_2fa_enroll(request: Request, user: Optional[User] = Depends(optional_user), svc: HubServices = Depends(get_services)):
+    if user is None:
+        return _login_redirect(request)
+    svc.start_totp_enrollment(user)
+    return _redirect("/account", message="scan the code with your authenticator, then confirm with the 6-digit code")
+
+
+@router.post("/account/2fa/confirm")
+def account_2fa_confirm(request: Request, code: str = Form(...), user: Optional[User] = Depends(optional_user), svc: HubServices = Depends(get_services)):
+    if user is None:
+        return _login_redirect(request)
+    codes = svc.confirm_totp(user, code)
+    url = "/account?" + "&".join("rc=" + quote(c) for c in codes)
+    response = _redirect(url, message="two-factor authentication enabled; save the recovery codes below, they are shown once")
+    _set_session(request, response, user)  # the stamp rotated; keep this session
+    return response
+
+
+@router.post("/account/2fa/disable")
+def account_2fa_disable(request: Request, password: str = Form(...), code: str = Form(...), user: Optional[User] = Depends(optional_user), svc: HubServices = Depends(get_services)):
+    if user is None:
+        return _login_redirect(request)
+    svc.disable_totp(user, password=password, code=code)
+    response = _redirect("/account", message="two-factor authentication disabled")
+    _set_session(request, response, user)
+    return response
+
+
+@router.post("/account/2fa/recovery-codes")
+def account_2fa_recovery(request: Request, code: str = Form(...), user: Optional[User] = Depends(optional_user), svc: HubServices = Depends(get_services)):
+    if user is None:
+        return _login_redirect(request)
+    codes = svc.regenerate_recovery_codes(user, code=code)
+    return _redirect("/account?" + "&".join("rc=" + quote(c) for c in codes), message="new recovery codes; the old ones no longer work")
+
+
+@router.post("/account/password")
+def account_password(request: Request, current_password: str = Form(...), new_password: str = Form(...), user: Optional[User] = Depends(optional_user), svc: HubServices = Depends(get_services)):
+    if user is None:
+        return _login_redirect(request)
+    svc.change_password(user, current_password=current_password, new_password=new_password)
+    response = _redirect("/account", message="password changed; every other session has been signed out")
+    _set_session(request, response, user)
+    return response
+
+
+@router.post("/account/institution")
+def account_institution(request: Request, allowed_email_domains: str = Form(""), rotate: str = Form(""), user: Optional[User] = Depends(optional_user), svc: HubServices = Depends(get_services)):
+    if user is None:
+        return _login_redirect(request)
+    svc.update_institution_settings(actor=user, institution=user.institution, allowed_email_domains=allowed_email_domains, rotate_invite_code=rotate == "yes")
+    return _redirect("/account", message="institution settings saved")
+
+
+@router.post("/account/members/{user_id}")
+def account_member(request: Request, user_id: int, decision: str = Form(...), user: Optional[User] = Depends(optional_user), svc: HubServices = Depends(get_services)):
+    if user is None:
+        return _login_redirect(request)
+    member = svc.db.get(User, user_id)
+    if member is None:
+        raise HubError(404, "member_not_found", "no such member")
+    if decision == "admin":
+        svc.set_institution_admin(actor=user, member=member, flag=True)
+    elif decision == "unadmin":
+        svc.set_institution_admin(actor=user, member=member, flag=False)
+    else:
+        svc.approve_member(actor=user, member=member, approve=decision == "approve")
+    return _redirect("/account", message=f"{member.email}: {decision}")
 
 
 @router.post("/account/tokens")
@@ -431,7 +593,7 @@ def admin(request: Request, user: Optional[User] = Depends(optional_user), svc: 
     return render(
         request, "admin.html", user, users=users, roles=ALL_ROLES, institutions=svc.list_institutions(),
         identities=list(svc.tp.approved_code_identities()), policy=svc.attestation_policy(),
-        measurements=svc.list_measurements(include_revoked=True),
+        measurements=svc.list_measurements(include_revoked=True), audit=svc.audit_log(limit=100),
     )
 
 
@@ -459,7 +621,7 @@ async def admin_roles(request: Request, user_id: int, user: Optional[User] = Dep
     target = svc.db.get(User, user_id)
     if target is None:
         raise HubError(404, "user_not_found", "no such user")
-    svc.grant_roles(target, form.getlist("roles"))
+    svc.grant_roles(target, form.getlist("roles"), actor=user)
     return _redirect("/admin", message=f"roles updated for {target.email}")
 
 
@@ -467,7 +629,7 @@ async def admin_roles(request: Request, user_id: int, user: Optional[User] = Dep
 def admin_founding(request: Request, slug: str, is_founding: str = Form(""), user: Optional[User] = Depends(optional_user), svc: HubServices = Depends(get_services)):
     if user is None or not user.is_admin:
         return _redirect("/", error="admin role required")
-    svc.set_founding(svc.institution_by_slug(slug), is_founding == "yes")
+    svc.set_founding(svc.institution_by_slug(slug), is_founding == "yes", actor=user)
     return _redirect("/admin", message=f"{slug} updated")
 
 
