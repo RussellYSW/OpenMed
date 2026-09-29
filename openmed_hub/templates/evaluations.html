@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Evaluations{% endblock %}
+{% block content %}
+<h1>Multi-site evaluations</h1>
+<div class="card"><b>Reciprocity status for {{ user.institution.slug }}:</b> {{ reciprocity.evaluations_served_attested }} attested evaluation(s) served, {{ reciprocity.required }} required per request, {{ reciprocity.grace_requests_remaining }} grace request(s) remaining. To receive a multi-site evaluation, a site serves as evaluator for others; only acknowledgements signed by the counterparty count.</div>
+
+<h2>Request an evaluation of one of your models</h2>
+{% if mine and others %}
+<form method="post" action="/evaluations/request" class="card">
+  <label>Model <select name="bundle_id">{% for s in mine %}<option value="{{ s.bundle_id }}">{{ s.name }} v{{ s.version }} ({{ s.state }})</option>{% endfor %}</select></label>
+  <label>Evaluating institution <select name="evaluator_slug">{% for i in others %}<option value="{{ i.slug }}">{{ i.name }}</option>{% endfor %}</select></label>
+  <label>Detail <input name="detail" placeholder="which cohort or subgroup you want checked"></label>
+  <button class="btn">Request</button>
+</form>
+{% else %}<p class="small">You need a submitted model and at least one other institution registered.</p>{% endif %}
+
+<h2>Tasks involving {{ user.institution.slug }}</h2>
+{% if tasks %}
+<table>
+  <tr><th>#</th><th>Model</th><th>Requester</th><th>Evaluator</th><th>State</th><th>Detail</th><th>Action</th></tr>
+  {% for t in tasks %}
+  <tr>
+    <td>{{ t.id }}</td>
+    <td><a href="/models/{{ t.bundle_id }}" class="mono">…{{ t.bundle_id[-10:] }}</a></td>
+    <td>{{ t.requester.slug }}</td><td>{{ t.evaluator.slug }}</td>
+    <td><span class="badge state-{{ t.state }}">{{ t.state }}</span>{% if t.reason_code %}<br><small>{{ t.reason_code }}</small>{% endif %}</td>
+    <td><small>{{ t.detail }}</small>{% if t.report %}<br><small class="mono">{{ t.report[:160] }}{% if t.report|length > 160 %}…{% endif %}</small>{% endif %}</td>
+    <td>
+      {% if t.state == 'requested' and t.evaluator_institution_id == user.institution_id %}
+      <details><summary>Serve: record the metrics you measured</summary>
+        <form method="post" action="/evaluations/{{ t.id }}/serve">
+          <textarea name="report" rows="8" class="mono">{{ example_report }}</textarea>
+          <button class="btn secondary">Record report</button>
+        </form>
+      </details>
+      {% elif t.state == 'served' and t.requester_institution_id == user.institution_id %}
+      <form method="post" action="/evaluations/{{ t.id }}/acknowledge"><button class="btn secondary">Acknowledge (signs with your institution key)</button></form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p>No evaluation tasks yet.</p>{% endif %}
+{% endblock %}

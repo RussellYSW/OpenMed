@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Account{% endblock %}
+{% block content %}
+<h1>{{ user.name }} <small>{{ user.email }}</small></h1>
+<p>Institution <a href="/institutions/{{ user.institution.slug }}">{{ user.institution.name }}</a> · roles: {{ user.role_list | join(', ') }}{% if user.reviewer_id %} · reviewer id <code>{{ user.reviewer_id }}</code> ({{ 'client-held key' if user.reviewer_public_key else 'hub-held key' }}){% endif %}</p>
+
+{% if new_token %}<div class="card ok"><b>New API token</b> (shown once): <code>{{ new_token }}</code><br><small>Use it as <code>Authorization: Bearer …</code> or <code>openmed login --token …</code>.</small></div>{% endif %}
+
+<div class="cols">
+<section class="col">
+  <h2>API tokens</h2>
+  <form method="post" action="/account/tokens" class="inline"><input name="label" placeholder="laptop, CI, node-1"> <button class="btn secondary">Create token</button></form>
+  {% if tokens %}<table><tr><th>Label</th><th>Created</th><th>Last used</th><th></th></tr>{% for t in tokens %}<tr><td>{{ t.label or '—' }}</td><td>{{ t.created_at.strftime('%Y-%m-%d') }}</td><td>{{ t.last_used_at.strftime('%Y-%m-%d %H:%M') if t.last_used_at else 'never' }}</td><td><form method="post" action="/account/tokens/{{ t.id }}/delete" class="inline"><button class="link">revoke</button></form></td></tr>{% endfor %}</table>{% endif %}
+
+  <h2>Node handshake</h2>
+  <p>{% if user.institution.node_verified %}<span class="badge ok">verified</span> on {{ user.institution.node_verified_at.strftime('%Y-%m-%d') }}{% elif user.institution.node_public_key %}<span class="badge warn">key registered, handshake incomplete</span>{% else %}<span class="badge">no node registered</span>{% endif %}</p>
+  <p class="small">An <em>independent installation</em> is a site that registered a node key and completed the verification handshake. From the machine that will run your node:</p>
+<pre>pip install "openmed[hub]"        # or: pip install -e ".[hub]" from a checkout
+openmed login --hub {{ settings.hub_url }} --token &lt;your token&gt;
+openmed node keygen                 # writes ~/.openmed/node.key
+openmed node register               # posts the public key, signs the challenge</pre>
+</section>
+<section class="col">
+  <h2>Reviewer key</h2>
+  {% if user.is_reviewer %}
+  <p class="small">By default the hub holds your review key and signs when you use the web form. For a signature the hub cannot forge, generate a key on your own machine and register its public half; from then on reviews are signed locally with <code>openmed review</code> and this form is refused.</p>
+<pre>openmed reviewer keygen             # writes ~/.openmed/reviewer.key
+openmed reviewer register           # posts the public key
+openmed review --bundle &lt;id&gt; --decision approve --statement "…"</pre>
+  <form method="post" action="/account/reviewer-key" class="inline"><input name="public_key" placeholder="Ed25519 public key, 64 hex chars" class="mono"> <button class="btn secondary">Register public key</button></form>
+  {% else %}<p class="small">You are not a reviewer. A hub admin grants the technical or clinical reviewer role after the charter's promotion criteria are met.</p>{% endif %}
+</section>
+</div>
+{% endblock %}

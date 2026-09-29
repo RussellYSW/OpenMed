@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ i.name }}{% endblock %}
+{% block content %}
+<h1>{{ i.name }} <small class="mono">{{ i.slug }}</small></h1>
+<p>{{ i.kind.replace('_',' ') }} · {{ i.country }} · {% if i.is_founding %}founding institution{% else %}external institution{% endif %} · joined {{ i.created_at.strftime('%Y-%m-%d') }}</p>
+<div class="grid stats">
+  <div><b>{% if i.node_verified %}verified{% elif i.node_public_key %}pending{% else %}none{% endif %}</b><span>node handshake</span></div>
+  <div><b>{{ submissions | length }}</b><span>submissions</span></div>
+  <div><b>{{ reciprocity.evaluations_served_attested }}</b><span>attested evaluations served</span></div>
+  <div><b>{{ standing.tier.name if standing else 'observer' }}</b><span>standing (vote weight {{ standing.voting_weight if standing else 0 }})</span></div>
+</div>
+{% if i.node_public_key %}<p class="small mono">node key {{ i.node_public_key }}</p>{% endif %}
+<h2>Submissions</h2>
+{% if submissions %}<table><tr><th>Model</th><th>Version</th><th>Gate</th><th>State</th></tr>{% for s in submissions %}<tr><td><a href="/models/{{ s.bundle_id }}">{{ s.name }}</a></td><td>{{ s.version }}</td><td><span class="badge {{ s.gate_status }}">{{ s.gate_status }}</span></td><td>{{ s.state.replace('_',' ') }}</td></tr>{% endfor %}</table>{% else %}<p>None yet.</p>{% endif %}
+<h2>Members</h2>
+<ul>{% for u in i.users %}<li>{{ u.name }} &lt;{{ u.email }}&gt; — {{ u.role_list | join(', ') }}{% if u.reviewer_id %} · reviewer id <code>{{ u.reviewer_id }}</code>{% endif %}</li>{% endfor %}</ul>
+{% endblock %}

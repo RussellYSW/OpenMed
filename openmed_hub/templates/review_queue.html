@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Review queue{% endblock %}
+{% block content %}
+<h1>Review queue</h1>
+<p>Submissions from institutions other than yours that are awaiting review. Triage target: two business days; automated gate report within one week; first review within one week.</p>
+{% if queue %}
+<table>
+  <tr><th>Model</th><th>Institution</th><th>Gate</th><th>State</th><th>Waiting since</th></tr>
+  {% for s in queue %}<tr><td><a href="/models/{{ s.bundle_id }}">{{ s.name }} v{{ s.version }}</a></td><td>{{ s.institution.slug }}</td><td><span class="badge {{ s.gate_status }}">{{ s.gate_status }}</span></td><td>{{ s.state.replace('_',' ') }}</td><td>{{ s.created_at.strftime('%Y-%m-%d') }}</td></tr>{% endfor %}
+</table>
+{% else %}<p>Nothing waiting for you.</p>{% endif %}
+{% endblock %}

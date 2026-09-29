@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>A model arrives untrusted from one hospital. It leaves as a certified base model.</h1>
+  <p>Publish a clinical model for independent review, or fine-tune another team's certified model, without moving patient data. Every step is attested, signed by reviewers from other institutions, and recorded on a tamper-evident ledger.</p>
+  <p class="actions">
+    {% if user %}<a class="btn" href="/submit">Submit a model</a>{% else %}<a class="btn" href="/register">Register your institution</a> <a class="btn secondary" href="/join">Join an existing one</a>{% endif %}
+    <a class="btn secondary" href="/models?state=certified">Browse certified models</a>
+  </p>
+</section>
+
+<section class="grid stats">
+  <div><b>{{ metrics.registered_institutions }}</b><span>institutions</span></div>
+  <div><b>{{ metrics.independent_installations.numerator }}</b><span>verified external nodes</span></div>
+  <div><b>{{ metrics.model_submissions }}</b><span>model submissions</span></div>
+  <div><b>{{ metrics.certified_models }}</b><span>certified base models</span></div>
+</section>
+
+<section>
+  <h2>How it works</h2>
+  <ol class="steps">
+    <li><b>Register</b> your institution and stand up a node: generate a key, complete the verification handshake.</li>
+    <li><b>Submit</b> a bundle: weights, a Mitchell-style model card, an evaluation report, an optional clinician-readable fine-tuning manual. The pipeline attestation is checked against the approved code identities.</li>
+    <li><b>Automated gate</b> runs seven checks (card completeness, metadata, lineage attestation, metrics, subgroup gaps, membership-inference leakage, parameter norm). A failing check blocks the case with the reason logged.</li>
+    <li><b>Review board</b>: reviewers from <em>other</em> institutions sign approve / reject / block. No site certifies its own model. Certification needs {{ settings.certification_k }} approvals from {{ settings.certification_min_institutions }} institutions including {{ settings.technical_reviewers_min }} technical and {{ settings.clinical_reviewers_min }} clinical reviewers.</li>
+    <li><b>Certified base</b>: the release gets a citable identifier naming every contributor and reviewer, and anyone registered may download it and fine-tune it. Derived models link to their parent, so lineage is verifiable back to the root.</li>
+    <li><b>Reciprocity</b>: to receive a multi-site evaluation, a site serves as evaluator for others. Acknowledged service is signed by the counterparty and counted on the credit ledger.</li>
+  </ol>
+</section>
+
+{% if certified %}
+<section>
+  <h2>Recently certified</h2>
+  <table>
+    <tr><th>Model</th><th>Version</th><th>Institution</th><th>Identifier</th><th>Certified</th></tr>
+    {% for s in certified %}
+    <tr><td><a href="/models/{{ s.bundle_id }}">{{ s.name }}</a></td><td>{{ s.version }}</td><td><a href="/institutions/{{ s.institution.slug }}">{{ s.institution.slug }}</a></td><td><code>{{ s.identifier }}</code></td><td>{{ s.certified_at.strftime('%Y-%m-%d') }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+{% endif %}
+
+<section>
+  <h2>Participating institutions</h2>
+  {% if institutions %}
+  <ul class="pills">{% for i in institutions %}<li><a href="/institutions/{{ i.slug }}">{{ i.name }}</a>{% if i.node_verified %} <span class="badge ok">node verified</span>{% endif %}{% if i.is_founding %} <span class="badge">founding</span>{% endif %}</li>{% endfor %}</ul>
+  {% else %}<p>No institutions yet. <a href="/register">Be the first.</a></p>{% endif %}
+</section>
+{% endblock %}

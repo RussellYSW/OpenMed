@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Join{% endblock %}
+{% block content %}
+<h1>Join an existing institution</h1>
+<form method="post" action="/join" class="card">
+  <label>Institution <select name="institution_slug" required>{% for i in institutions %}<option value="{{ i.slug }}">{{ i.name }} ({{ i.slug }})</option>{% endfor %}</select></label>
+  <label>Email <input name="email" type="email" required></label>
+  <label>Name <input name="user_name"></label>
+  <label>Password (8+ characters) <input name="password" type="password" minlength="8" required></label>
+  <button class="btn">Create account</button>
+</form>
+<p>Your institution is not listed? <a href="/register">Register it.</a></p>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Institutions{% endblock %}
+{% block content %}
+<h1>Institutions</h1>
+<table>
+  <tr><th>Institution</th><th>Kind</th><th>Country</th><th>Node</th><th>Members</th><th></th></tr>
+  {% for i in institutions %}<tr><td><a href="/institutions/{{ i.slug }}">{{ i.name }}</a> <small class="mono">{{ i.slug }}</small></td><td>{{ i.kind.replace('_',' ') }}</td><td>{{ i.country }}</td><td>{% if i.node_verified %}<span class="badge ok">verified</span>{% elif i.node_public_key %}<span class="badge warn">key registered</span>{% else %}<span class="badge">none</span>{% endif %}</td><td>{{ i.users | length }}</td><td>{% if i.is_founding %}<span class="badge">founding</span>{% else %}<span class="badge">external</span>{% endif %}</td></tr>{% endfor %}
+</table>
+{% endblock %}

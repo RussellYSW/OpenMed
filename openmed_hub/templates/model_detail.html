@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}{{ s.name }} {{ s.version }}{% endblock %}
+{% block content %}
+<h1>{{ s.name }} <small>v{{ s.version }}</small>
+  <span class="badge state-{{ s.state }}">{{ s.state.replace('_',' ') }}</span>
+  <span class="badge {{ s.gate_status }}">gate: {{ s.gate_status }}</span>
+</h1>
+<p class="mono small">{{ s.bundle_id }}</p>
+<p>Published by <a href="/institutions/{{ s.institution.slug }}">{{ s.institution.slug }}</a> on {{ s.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+  {% if s.parent_bundle_id %} · derived from <a href="/models/{{ s.parent_bundle_id }}" class="mono">…{{ s.parent_bundle_id[-10:] }}</a>{% else %} · root model{% endif %}
+  · {{ d.downloads }} download{{ '' if d.downloads == 1 else 's' }}</p>
+
+{% if s.citation %}
+<div class="card ok"><b>Certified base model.</b> Cite as: <em>{{ s.citation }}</em></div>
+{% endif %}
+
+<p class="actions">
+  {% if user %}
+    <a class="btn" href="/models/{{ s.bundle_id }}/download">Download weights ({{ s.weights_format }}, {{ (s.weights_size / 1024) | round(1) }} KB)</a>
+    {% if s.state == 'certified' %}<a class="btn secondary" href="/submit?parent={{ s.bundle_id }}">Fine-tune: submit a derived model</a>{% endif %}
+  {% else %}<a class="btn" href="/login?next=/models/{{ s.bundle_id }}">Sign in to download</a> <small>(downloads require lightweight registration: that is the reciprocity rule)</small>{% endif %}
+</p>
+
+<div class="cols">
+<section class="col">
+  <h2>Certification</h2>
+  {% if d.case %}
+  <p>Owner institution <b>{{ d.case.facts.owner_institution }}</b>{% if d.case.facts.self_asserted %} (self-asserted){% else %} (derived from the bundle){% endif %} · state <b>{{ d.case.state }}</b> · manual {{ 'valid' if d.case.manual_ok else ('missing' if d.case.manual_ok is none else 'invalid') }}</p>
+  <p>Threshold: {{ d.threshold.n_approvals }} approval(s) from {{ d.threshold.institutions | join(', ') or 'no institution yet' }} — <b>{{ 'met' if d.threshold.met else d.threshold.reason_code }}</b>{% if d.threshold.blocking_reviewers %}; blocked by {{ d.threshold.blocking_reviewers | join(', ') }}{% endif %}{% if s.state == 'certified' and not d.threshold.met %} <small>(a signing key was rotated or revoked after certification; the original signatures remain on the decision log)</small>{% endif %}</p>
+  <p>Board composition: {{ d.board.technical }}/{{ d.board.technical_required }} technical, {{ d.board.clinical }}/{{ d.board.clinical_required }} clinical — <b>{{ 'satisfied' if d.board.satisfied else 'not yet' }}</b></p>
+  {% if d.reviews %}
+  <table>
+    <tr><th>Reviewer</th><th>Institution</th><th>Decision</th><th>Statement</th><th>Signed</th><th>Key</th></tr>
+    {% for r in d.reviews %}
+    <tr class="{{ '' if r.accepted else 'muted' }}">
+      <td>{{ r.reviewer_id }}</td><td>{{ r.institution }}</td>
+      <td>{% if r.accepted %}<span class="badge {{ 'ok' if r.decision == 'approve' else 'fail' }}">{{ r.decision }}</span>{% else %}<span class="badge fail">refused: {{ r.refusal_code }}</span>{% endif %}</td>
+      <td>{{ r.statement }}{% if not r.accepted %}<br><small>{{ r.refusal_detail }}</small>{% endif %}</td>
+      <td><small>{{ r.signed_at or r.created_at[:19] }}</small></td>
+      <td><small>{{ 'hub-held key' if r.hub_signed else 'client-held key' }}</small></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if user and user.is_reviewer and not is_owner and s.state in ['submitted','under_review','remediated','certified'] %}
+  <form method="post" action="/models/{{ s.bundle_id }}/review" class="card">
+    <h3>Sign a review as {{ user.reviewer_id }} ({{ user.reviewer_role_label }})</h3>
+    <label>Decision <select name="decision"><option value="approve">approve</option><option value="reject">reject (withhold approval)</option><option value="block">block (open a dispute: unresolved subgroup harm, demonstrated leakage, …)</option></select></label>
+    <label>Statement <textarea name="statement" rows="3" placeholder="What you checked and why you decided this way. This text is signed and logged."></textarea></label>
+    <button class="btn">Sign and submit</button>
+    {% if user.reviewer_public_key %}<p class="small">Your key is client-held: use <code>openmed review</code> instead; this form will be refused.</p>{% endif %}
+  </form>
+  {% elif user and is_owner %}<p class="small">Reviewers from your own institution cannot certify this model (no self-certification).</p>{% endif %}
+
+  {% if user %}
+  <details class="card"><summary>Disputes, remediation, appeals</summary>
+    <form method="post" action="/models/{{ s.bundle_id }}/action">
+      <label>Action <select name="action">
+        <option value="dispute">dispute (any registered user; blocks the case)</option>
+        {% if is_owner %}<option value="remediate">remediate (owner; clears prior approvals, reopens review)</option><option value="appeal">appeal (owner; to the advisory board)</option>{% endif %}
+        {% if user.is_admin %}<option value="resolve_appeal">resolve appeal (advisory board)</option>{% endif %}
+        {% if user.is_maintainer %}<option value="revoke">revoke (maintainer; terminal)</option>{% endif %}
+      </select></label>
+      <label>Reason / note <textarea name="text" rows="2" required></textarea></label>
+      {% if user.is_admin %}<label>If resolving an appeal: <select name="upheld"><option value="yes">uphold (case returns to remediated)</option><option value="no">refuse (case is revoked)</option></select></label>{% endif %}
+      <button class="btn secondary">Record</button>
+    </form>
+  </details>
+  {% endif %}
+  {% else %}<p>No certification case.</p>{% endif %}
+
+  <h2>Automated gate</h2>
+  <p>Verdict <span class="badge {{ s.gate_status }}">{{ s.gate_status }}</span> · {{ d.gate.counts.pass }} passed, {{ d.gate.counts.warn }} warnings, {{ d.gate.counts.fail + d.gate.counts.error }} failed, {{ d.gate.counts.skip }} skipped for lack of evidence · analyzer {{ d.gate.analyzer_version }}</p>
+  {% if d.gate.results %}
+  <table>
+    <tr><th>Check</th><th>Status</th><th>Finding</th></tr>
+    {% for r in d.gate.results %}<tr><td>{{ r.title }}<br><small>{{ r.check_id }}</small></td><td><span class="badge {{ r.status }}">{{ r.status }}</span></td><td>{{ r.summary }}{% if r.recommendation %}<br><small>{{ r.recommendation }}</small>{% endif %}</td></tr>{% endfor %}
+  </table>
+  {% endif %}
+  {% if d.gate.narrative %}<p class="small">{{ d.gate.narrative }}</p>{% endif %}
+  <p class="small">{{ d.gate.disclaimer }}</p>
+</section>
+
+<section class="col">
+  <h2>Evaluation report</h2>
+  <p>Dataset <b>{{ d.bundle.evaluation.dataset_id }}</b>, n={{ d.bundle.evaluation.n_samples }}{% if d.bundle.evaluation.evaluated_by %}, evaluated by {{ d.bundle.evaluation.evaluated_by }}{% endif %}{% if d.bundle.evaluation.protocol %} · {{ d.bundle.evaluation.protocol }}{% endif %}</p>
+  <table><tr><th>Metric</th><th>Value</th></tr>{% for k, v in d.bundle.evaluation.metrics.items() %}<tr><td>{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}</table>
+  {% if d.bundle.evaluation.subgroup_metrics %}
+  <table><tr><th>Subgroup</th><th>Metrics</th></tr>{% for g, m in d.bundle.evaluation.subgroup_metrics.items() %}<tr><td>{{ g }}</td><td>{% for k, v in m.items() %}{{ k }}={{ v }} {% endfor %}</td></tr>{% endfor %}</table>
+  {% endif %}
+
+  <h2>Pipeline attestation</h2>
+  <p>Client <b>{{ d.bundle.attestation.client_id }}</b> · verified <b>{{ d.bundle.attestation.verified }}</b> ({{ d.bundle.attestation.verifier_reason }}) · attestor {{ d.bundle.attestation.attestor_id }}<br><small class="mono">measurement {{ d.bundle.attestation.measurement }}</small></p>
+
+  <h2>Lineage</h2>
+  <p>{{ d.lineage_summary }}</p>
+  {% if d.children %}<p>Derived models: {% for c in d.children %}<a href="/models/{{ c }}" class="mono">…{{ c[-10:] }}</a> {% endfor %}</p>{% endif %}
+  <pre class="small">{{ d.lineage_mermaid }}</pre>
+
+  <h2>Model card</h2>
+  <pre class="card-md">{{ d.model_card_markdown }}</pre>
+
+  {% if d.bundle.fine_tuning_manual %}
+  <h2>Fine-tuning manual (clinician-readable)</h2>
+  {% for section, body in d.bundle.fine_tuning_manual.items() %}<p><b>{{ section.replace('_',' ') }}</b>: {% for k, v in body.items() %}<i>{{ k.replace('_',' ') }}</i> — {{ v }}; {% endfor %}</p>{% endfor %}
+  {% endif %}
+</section>
+</div>
+
+<section>
+  <h2>Decision log</h2>
+  <p class="small">Append-only. Every entry is hash-chained; editing or removing one breaks verification (see <a href="/metrics">ledger status</a>).</p>
+  <table>
+    <tr><th>When</th><th>Action</th><th>Actor</th><th>State</th><th>Detail</th></tr>
+    {% for e in d.decision_log %}<tr><td><small>{{ e.timestamp[:19] }}</small></td><td>{{ e.action }}</td><td>{{ e.actor }}</td><td>{{ e.from_state or '' }} → {{ e.to_state or '' }}</td><td><small>{{ e.detail }}</small></td></tr>{% endfor %}
+  </table>
+</section>
+
+<details><summary>Raw bundle JSON</summary><pre class="small">{{ bundle_json }}</pre></details>
+<details><summary>Raw gate report JSON</summary><pre class="small">{{ gate_json }}</pre></details>
+{% endblock %}

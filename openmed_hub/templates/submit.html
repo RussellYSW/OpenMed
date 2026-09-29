@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Submit a model{% endblock %}
+{% block content %}
+<h1>Submit a model bundle</h1>
+<p>A bundle is everything a receiving site needs to decide whether to trust and reuse a model. Nothing here should contain patient data. The pipeline attestation is checked against the approved code identities; the automated gate then runs before any reviewer sees the case.</p>
+{% if mode == 'nodekey' %}
+<div class="card">
+  <h3>This hub requires node-key attestation</h3>
+  <p>A submission must carry a quote signed at your site with its verified node key, over a software measurement of the code that ran. The browser cannot sign with that key, so submit from the machine that holds it:</p>
+<pre>openmed login --hub {{ settings.hub_url }} --email {{ user.email }}
+openmed node keygen && openmed node register            # once per site
+openmed measure --script train.py                        # shows the measurement a maintainer must approve
+openmed submit --name … --version … --weights model.npz --card card.json                --evaluation eval.json --manual manual.json --script train.py{% if parent %} --parent {{ parent }}{% endif %}</pre>
+  <p class="small">Your institution's node: {% if user.institution.node_verified %}<span class="badge ok">verified</span>{% else %}<span class="badge fail">not verified yet</span>{% endif %}. Approved pipeline measurements are listed at <a href="/api/v1/attestation/policy">/api/v1/attestation/policy</a>.</p>
+</div>
+<details><summary>Show the form anyway (fails without a quote; kept for hubs in mock mode)</summary>
+{% endif %}
+<form method="post" action="/submit" enctype="multipart/form-data" class="card">
+  <div class="row">
+    <label>Model name <input name="name" required placeholder="cognitive-decline-risk"></label>
+    <label>Version <input name="version" required placeholder="1.0.0"></label>
+  </div>
+  <div class="row">
+    <label>Code identity (mock mode only; approved: {{ identities | join(', ') }}) <input name="code_identity" value="{{ identities[0] if identities else '' }}"></label>
+    <label>Training config label <input name="config" placeholder="training-config-v1"></label>
+  </div>
+  <label>Parent bundle id (leave empty for a root model) <input name="parent_bundle_id" value="{{ parent }}" class="mono"></label>
+  <label>Tags (comma separated) <input name="tags" placeholder="neurology, cognitive-decline"></label>
+  <label>Weights file (.npz/.npy get the parameter-norm check; any format is accepted) <input type="file" name="weights" required></label>
+  <label>Model card (JSON, the nine Mitchell et al. sections) <textarea name="model_card" rows="18" class="mono">{{ example_card }}</textarea></label>
+  <label>Evaluation report (JSON; include subgroup_metrics so the gap check can run) <textarea name="evaluation" rows="10" class="mono">{{ example_evaluation }}</textarea></label>
+  <label>Fine-tuning manual (JSON, optional but required for the case to be marked manual-valid) <textarea name="fine_tuning_manual" rows="14" class="mono">{{ example_manual }}</textarea></label>
+  <button class="btn">Publish bundle and open the certification case</button>
+</form>
+{% if mode == 'nodekey' %}</details>{% endif %}
+<p class="small">Prefer the CLI? <code>openmed submit --name … --version … --weights model.npz --card card.json --evaluation eval.json --manual manual.json</code></p>
+{% endblock %}

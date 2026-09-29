@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Register institution{% endblock %}
+{% block content %}
+<h1>Register an institution</h1>
+<p>Any registered institution or developer may submit. There is no fee and no invitation. The first account becomes the institution's local contact; a hub admin can grant reviewer or maintainer roles later. Already registered? <a href="/join">Join your institution</a>.</p>
+<form method="post" action="/register" class="card">
+  <h3>Institution</h3>
+  <label>Name <input name="name" required placeholder="University of Somewhere Medical Center"></label>
+  <label>Short slug (optional) <input name="slug" placeholder="somewhere-mc"></label>
+  <label>Kind <select name="kind">{% for k in kinds %}<option value="{{ k }}">{{ k.replace('_',' ') }}</option>{% endfor %}</select></label>
+  <label>Country <input name="country" value="US"></label>
+  <h3>Your account</h3>
+  <label>Email <input name="email" type="email" required></label>
+  <label>Name <input name="user_name"></label>
+  <label>Password (8+ characters) <input name="password" type="password" minlength="8" required></label>
+  <button class="btn">Register</button>
+</form>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Admin{% endblock %}
+{% block content %}
+<h1>Administration</h1>
+<p class="small">Roles follow the charter ladder: contributor → trusted reviewer (technical / clinical) → maintainer. The advisory board (admin) resolves appeals. Anti-capture: keep reviewers spread across institutions; certification needs {{ settings.certification_min_institutions }} distinct institutions.</p>
+<h2>Users and roles</h2>
+<table>
+  <tr><th>User</th><th>Institution</th><th>Roles</th><th></th></tr>
+  {% for u in users %}
+  <tr><td>{{ u.name }}<br><small>{{ u.email }}</small></td><td>{{ u.institution.slug }}</td>
+    <td><form method="post" action="/admin/users/{{ u.id }}/roles" class="inline">{% for r in roles %}<label class="check"><input type="checkbox" name="roles" value="{{ r }}" {% if u.has_role(r) %}checked{% endif %}> {{ r.replace('_',' ') }}</label>{% endfor %} <button class="btn secondary">Save</button></form></td>
+    <td><small>{{ u.reviewer_id or '' }}</small></td></tr>
+  {% endfor %}
+</table>
+<h2>Institutions</h2>
+<table><tr><th>Institution</th><th>Node</th><th>Founding?</th></tr>
+{% for i in institutions %}<tr><td>{{ i.name }} <small class="mono">{{ i.slug }}</small></td><td>{{ 'verified' if i.node_verified else ('pending' if i.node_public_key else 'none') }}</td><td><form method="post" action="/admin/institutions/{{ i.slug }}/founding" class="inline"><select name="is_founding"><option value="yes" {% if i.is_founding %}selected{% endif %}>founding (not external)</option><option value="no" {% if not i.is_founding %}selected{% endif %}>external</option></select> <button class="btn secondary">Save</button></form></td></tr>{% endfor %}
+</table>
+<h2>Attestation policy — mode <code>{{ policy.mode }}</code></h2>
+<p class="small">{{ policy.attestor }}</p>
+{% if policy.mode == 'nodekey' %}
+<p class="small">A site runs <code>openmed measure --script train.py</code> on a clean install of the approved pipeline release and sends you the digest; approving it here lets quotes carrying that measurement through the gate. Revoking it refuses new submissions built with that code. The digest excludes machine-specific facts, so the same release measures identically everywhere.</p>
+<form method="post" action="/admin/measurements" class="card">
+  <label>Measurement (SHA-256, 64 hex) <input name="measurement" class="mono" required pattern="[0-9a-fA-F]{64}"></label>
+  <label>Label <input name="label" placeholder="trustfed 0.1.0 + train.py @ release 2026-09"></label>
+  <button class="btn secondary">Approve measurement</button>
+</form>
+<table><tr><th>Measurement</th><th>Label</th><th>Added</th><th>Status</th><th></th></tr>
+{% for m in measurements %}<tr><td><code>{{ m.measurement[:16] }}…</code></td><td>{{ m.label }}</td><td>{{ m.added_at.strftime('%Y-%m-%d') }}</td><td>{% if m.active %}<span class="badge ok">active</span>{% else %}<span class="badge fail">revoked {{ m.revoked_at.strftime('%Y-%m-%d') }}</span>{% endif %}</td><td>{% if m.active %}<form method="post" action="/admin/measurements/{{ m.measurement }}/revoke" class="inline"><button class="link">revoke</button></form>{% endif %}</td></tr>{% endfor %}
+{% for m in settings.approved_measurements %}<tr><td><code>{{ m[:16] }}…</code></td><td>configured at startup</td><td>—</td><td><span class="badge ok">active</span></td><td></td></tr>{% endfor %}
+</table>
+{% else %}
+<p>Approved code identities: {% for i in identities %}<code>{{ i }}</code> {% endfor %}. Set <code>OPENMED_APPROVED_CODE_IDENTITIES</code> (comma separated) and restart to change. Mock mode signs the identity a client declares; switch to <code>OPENMED_ATTESTATION_MODE=nodekey</code> for anything real.</p>
+{% endif %}
+{% endblock %}

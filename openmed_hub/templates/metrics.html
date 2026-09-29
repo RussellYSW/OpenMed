@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Metrics{% endblock %}
+{% block content %}
+<h1>Metrics</h1>
+<p class="small">Reported quarterly, each with a stated denominator. <em>External</em> means {{ m.external_definition }}. Generated {{ m.generated_at[:19] }} UTC.</p>
+<table>
+  <tr><th>Metric</th><th>Numerator</th><th>Denominator</th><th>Ratio</th><th>Definition</th></tr>
+  {% for key in ['independent_installations','first_contribution_conversion','ninety_day_retention'] %}{% set r = m[key] %}
+  <tr><td><b>{{ key.replace('_',' ') }}</b>{% if key == 'ninety_day_retention' %} (headline){% endif %}</td><td>{{ r.numerator }}</td><td>{{ r.denominator }}</td><td>{{ r.ratio if r.ratio is not none else '—' }}</td><td><small>{{ r.note }}</small></td></tr>
+  {% endfor %}
+</table>
+<div class="grid stats">
+  <div><b>{{ m.accepted_contributions }}</b><span>accepted contributions</span></div>
+  <div><b>{{ m.model_submissions }}</b><span>model submissions</span></div>
+  <div><b>{{ m.certified_models }}</b><span>certified models</span></div>
+  <div><b>{{ m.independent_maintainers }}</b><span>independent maintainers</span></div>
+  <div><b>{{ m.downloads }}</b><span>registered downloads</span></div>
+  <div><b>{{ m.registered_users }}</b><span>registered users</span></div>
+</div>
+{% if m.quarters %}<h2>By quarter</h2><table><tr><th>Quarter</th><th>Submissions</th><th>Certified</th></tr>{% for q, row in m.quarters.items() %}<tr><td>{{ q }}</td><td>{{ row.submissions }}</td><td>{{ row.certified }}</td></tr>{% endfor %}</table>{% endif %}
+
+<h2>Contributor standing</h2>
+<pre class="small">{{ standing.markdown }}</pre>
+
+<h2>Ledger integrity</h2>
+<table><tr><th>Chain</th><th>Blocks</th><th>Verified</th><th>Head</th></tr>
+{% for name, v in ledgers.items() %}<tr><td>{{ name }}</td><td>{{ v.length }}</td><td><span class="badge {{ 'ok' if v.ok else 'fail' }}">{{ 'ok' if v.ok else 'FAILED' }}</span></td><td><small class="mono">{{ v.head[:24] }}…</small></td></tr>{% endfor %}
+</table>
+{% endblock %}

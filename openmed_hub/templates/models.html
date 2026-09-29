@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Models{% endblock %}
+{% block content %}
+<h1>Models</h1>
+<p class="filters">Filter:
+  <a href="/models" {% if not state %}class="on"{% endif %}>all</a>
+  {% for st in ['submitted','under_review','blocked','remediated','certified','revoked'] %}<a href="/models?state={{ st }}" {% if state == st %}class="on"{% endif %}>{{ st.replace('_',' ') }}</a>{% endfor %}
+</p>
+{% if submissions %}
+<table>
+  <tr><th>Model</th><th>Version</th><th>Institution</th><th>Gate</th><th>State</th><th>Parent</th><th>Submitted</th></tr>
+  {% for s in submissions %}
+  <tr>
+    <td><a href="/models/{{ s.bundle_id }}">{{ s.name }}</a> <small class="mono">…{{ s.bundle_id[-8:] }}</small></td>
+    <td>{{ s.version }}</td>
+    <td><a href="/institutions/{{ s.institution.slug }}">{{ s.institution.slug }}</a></td>
+    <td><span class="badge {{ s.gate_status }}">{{ s.gate_status }}</span></td>
+    <td><span class="badge state-{{ s.state }}">{{ s.state.replace('_',' ') }}</span></td>
+    <td>{% if s.parent_bundle_id %}<a href="/models/{{ s.parent_bundle_id }}" class="mono">…{{ s.parent_bundle_id[-8:] }}</a>{% else %}root{% endif %}</td>
+    <td>{{ s.created_at.strftime('%Y-%m-%d') }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p>Nothing here yet.</p>{% endif %}
+{% endblock %}

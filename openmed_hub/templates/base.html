@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ settings.hub_name }}{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">{{ settings.hub_name }}</a>
+  <nav>
+    <a href="/models">Models</a>
+    <a href="/institutions">Institutions</a>
+    <a href="/metrics">Metrics</a>
+    {% if user %}
+      <a href="/submit">Submit</a>
+      {% if user.is_reviewer %}<a href="/review">Review queue</a>{% endif %}
+      <a href="/evaluations">Evaluations</a>
+      {% if user.is_admin %}<a href="/admin">Admin</a>{% endif %}
+      <a href="/account">{{ user.email }}</a>
+      <form method="post" action="/logout" class="inline"><button class="link">Sign out</button></form>
+    {% else %}
+      <a href="/login">Sign in</a>
+      <a href="/register" class="cta">Register institution</a>
+    {% endif %}
+  </nav>
+</header>
+<main>
+  {% if message %}<div class="flash ok">{{ message }}</div>{% endif %}
+  {% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+<footer>
+  <span>OpenMed — a governed commons for clinical AI models. Apache-2.0 code, reciprocal model license. No patient data is stored here: only weights, cards, reports and signatures.</span>
+  <span><a href="/docs">API docs</a> · <a href="https://russellysw.github.io/OpenMed/governance.html">Governance charter</a> · <a href="https://github.com/RussellYSW/OpenMed">Source</a></span>
+</footer>
+</body>
+</html>

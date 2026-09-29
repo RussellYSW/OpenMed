@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<h1>Sign in</h1>
+<form method="post" action="/login" class="card">
+  <input type="hidden" name="next" value="{{ next }}">
+  <label>Email <input name="email" type="email" required></label>
+  <label>Password <input name="password" type="password" required></label>
+  <button class="btn">Sign in</button>
+</form>
+<p>No account? <a href="/register">Register an institution</a> or <a href="/join">join one</a>.</p>
+{% endblock %}
